@@ -1,0 +1,13 @@
+#!/bin/sh
+# $Id: run_tests.in,v 1.2 2006/01/11 00:48:14 lha Exp $
+
+srcdir="@srcdir@"
+
+cat > test-rc-file.rc <<EOF
+cert	User certificate	$srcdir/data/test.crt	$srcdir/data/test.key
+anchor	CA certificate	$srcdir/data/ca.crt
+EOF
+
+env SOFTPKCS11RC="test-rc-file.rc" \
+	./test_soft_pkcs11 || exit 1
+

@@ -1,0 +1,10 @@
+# Separator is \t
+# fields are id, label, cert file[, optional keyfile]
+# "anchor" (only one per configuration file) special id will be using
+# a special id to mark is as an x509 anchor.
+#
+#	$Id: soft-token.rc,v 1.1 2004/05/02 16:22:47 lha Exp $
+#
+lha	Love's certificate	/secure/lha/su/CA/lha.crt	/secure/lha/su/CA/lha-nopw.key
+su	Stockholm university's CA	/secure/lha/su/CA/su-ca.crt
+anchor	SWUPKI policy CA root		/secure/lha/su/CA/swupki-pca.crt

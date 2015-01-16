@@ -1,0 +1,40 @@
+
+Java 1.5 support
+================
+
+soft-pkcs11 is now tested with the Java 1.5 pkcs11 module. To use a
+pkcs11 module as a keystore you have to write a configuration file. A
+sample one for soft-pkcs11 is includede in this directory.
+
+To use it, update the configuration file where the PKCS11 module is
+installed and run the command below in this directory (or use absolute
+path to the configuration file).
+
+keytool \
+        -keystore NONE \
+        -storetype PKCS11 \
+        -providerClass sun.security.pkcs11.SunPKCS11 \
+        -providerArg pkcs11.cfg \
+        -list
+
+If you get a "load failed" IOException, your configuration file might
+be wrong. To get a known good configuration file, run make check in
+the object tree and and the sample program will create a sample file
+called test-rc-file.rc that points out sample certificates that are
+included in with the distribution. You can use it with this command.
+
+Example output:
+
+	$ env SOFTPKCS11RC=../test-rc-file.rc keytool -keystore NONE -storetype PKCS11 -providerClass sun.security.pkcs11.SunPKCS11 -providerArg pkcs11.cfg -list
+	Enter keystore password:  
+	
+	Keystore type: PKCS11
+	Keystore provider: SunPKCS11-SoftToken
+	
+	Your keystore contains 2 entries
+	
+	User certificate, keyEntry,
+	Certificate fingerprint (MD5): 34:54:37:E1:EF:03:6F:61:32:79:83:47:8C:ED:9A:55
+	CA certificate, trustedCertEntry,
+	Certificate fingerprint (MD5): E1:34:AF:32:19:47:A3:F4:37:F0:03:C1:3E:23:16:E7
+

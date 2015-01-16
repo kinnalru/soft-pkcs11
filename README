@@ -1,0 +1,27 @@
+
+soft-pkcs11 is a software only pkcs11 implementation
+
+It is built to handle mozilla and the pkinit extension to heimdal, if
+you you think its lacking in functionality you expect to be there,
+just send me a mail about it.
+
+It only handles RSA, again, this is because I don't need more.
+
+soft-pkcs11 currently uses OpenSSL for crypto and PEM operations.
+
+Its not a full pkcs11 module, you need to add a configuration file in
+your home directory ($HOME/.soft-token.rc) to specify what certifictes
+you want to appear in the PKCS11 module. See the sample configuration
+file in the distribution for help how to configure it. Your smart card
+PIN will be treated as the passphrase for your private key file (if
+you have one). Its not possible to import certificates and key into
+the module, just to use configured certificates.
+
+To make it work with Java 1.5 which includes a pkcs11 keystore. See
+the sample program and configuration file java/ directory in the
+distribution.
+
+Love Hörnquist Åstrand
+lha@it.su.se
+
+$Id: README,v 1.5 2006/01/11 11:52:23 lha Exp $

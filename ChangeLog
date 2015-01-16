@@ -1,0 +1,88 @@
+2006-01-11  Love Hörnquist Åstrand  <lha@it.su.se>
+
+	* Release 1.8
+
+	* test_soft_pkcs11.c: drop spurious printf, check for
+	CKF_LOGIN_REQUIRED
+
+	* java/{README,pkcs11.cfg}: Guide to get Java working.
+	
+	* README: add text about Java guide in java/ directory. 
+
+	* test_soft_pkcs11.c: Less icky build of test program.
+
+	* Makefile.am: Less icky build of test program.
+
+	* Release 1.7
+
+	* main.c: Allow multiple session open at the same time.
+	
+	* Release 1.6
+
+	* main.c: More logging, fix C_Verify.
+
+	* test_soft_pkcs11.c: Add tests for encrypt, decrypt, sign,
+	verify.
+
+	* run_tests.in: point out a key that exists
+
+	* main.c: pkcs11, not pkcs12
+
+	* Release 1.5
+
+	* data: Add test certs
+
+	* test_soft_pkcs11.c: do all boring work of setting up a pkcs11
+	token
+	
+	* main.c: Update (c)
+	
+	* main.c: Use enviroment variable SOFTPKCS12RC to parse
+	certificates
+
+	* test_soft_pkcs11.c: framework for testapp
+
+	* Makefile.am: Add more testing.
+
+2006-01-10  Love Hörnquist Åstrand  <lha@it.su.se>
+	
+	* Release 1.4
+
+	* main.c: libraryVersion.minor = 4
+	
+	* main.c: Make a copy of the find attributes in C_FindObjectsInit,
+	this since some applications (java 1.5 pkcs11 module among them)
+	free the memory before calling C_FindObjects, thus making sure
+	there are no bits for us to us. Based on bug filed by Rogan Dawes.
+
+	While I'm here, commit the old changes, more verbose loggning and
+	indent.
+
+2005-09-02 Love <lha@kth.se>
+
+	* main.c: Set method for both cases where we load them.
+	
+2005-09-01 Love <lha@kth.se>
+
+	* Release 1.3
+
+	* main.c: Flush output in debug logging, set the rsa method to
+	RSA_PKCS1_SSLeay() for our keys.  Patch from Christopher Nebergall
+	<christopher.nebergall@gmail.com>
+	
+2005-08-29 Love <lha@kth.se>
+
+	* README: Text about smart card pin.
+	
+2005-08-28 Love <lha@kth.se>
+
+	* main.c: Fix signedness warnings.
+	
+	* Release 1.2
+
+	* README: See sample configuration.
+	
+	* locl.h: Reorder includes.
+	
+	* main.c: Handle private key better. Fix iterations of objects.
+
