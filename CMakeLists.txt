@@ -16,16 +16,19 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 find_package(Boost REQUIRED COMPONENTS
     system
+    filesystem
 )
 include_directories(${Boost_INCLUDE_DIRS})
 
 #add_subdirectory(3rdparty//qtwebdav)
 
 set(HEADERS
+  soft_token.h
 )
 
 set(SOURCES 
     main.cpp
+    soft_token.cpp
 )
 
 
