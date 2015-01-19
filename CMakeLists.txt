@@ -24,10 +24,12 @@ include_directories(${Boost_INCLUDE_DIRS})
 
 set(HEADERS
   soft_token.h
+  tools.h
 )
 
 set(SOURCES 
     main.cpp
+	tools.cpp
     soft_token.cpp
 )
 
