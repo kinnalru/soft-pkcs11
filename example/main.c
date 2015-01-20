@@ -117,7 +117,7 @@ st_logf(const char *fmt, ...)
     if (soft_token.logfile == NULL) return;
     va_list ap;
     va_start(ap, fmt);
-    fprintf(soft_token.logfile, "                                   ** ");
+//     fprintf(soft_token.logfile, "                                   ** ");
     vfprintf(soft_token.logfile, fmt, ap);
     va_end(ap);
     fflush(soft_token.logfile);
@@ -175,6 +175,8 @@ object_handle_to_object(CK_OBJECT_HANDLE handle,
 {
     int i = HANDLE_OBJECT_ID(handle);
 
+    st_logf("object_handle_to_object\n");
+    
     *object = NULL;
     if (i >= soft_token.object.num_objs)
 	return CKR_ARGUMENTS_BAD;
@@ -182,6 +184,8 @@ object_handle_to_object(CK_OBJECT_HANDLE handle,
 	return CKR_ARGUMENTS_BAD;
     if (soft_token.object.objs[i]->object_handle != handle)
 	return CKR_ARGUMENTS_BAD;
+    
+    st_logf("object_handle_to_object COPY\n");
     *object = soft_token.object.objs[i];
     return CKR_OK;
 }
@@ -225,66 +229,67 @@ print_attributes(const CK_ATTRIBUTE *attributes,
 
     for (i = 0; i < num_attributes; i++) {
 	st_logf("  type: ");
-	switch (attributes[i].type) {
-	case CKA_TOKEN: {
-	    CK_BBOOL *ck_true;
-	    if (attributes[i].ulValueLen != sizeof(CK_BBOOL)) {
-		application_error("token attribute wrong length\n");
-		break;
-	    }
-	    ck_true = attributes[i].pValue;
-	    st_logf("token: %s", *ck_true ? "TRUE" : "FALSE");
-	    break;
+        switch (attributes[i].type) {
+        case CKA_TOKEN: {
+            CK_BBOOL *ck_true;
+            if (attributes[i].ulValueLen != sizeof(CK_BBOOL)) {
+                application_error("token attribute wrong length\n");
+                break;
+            }
+            ck_true = attributes[i].pValue;
+            st_logf("token: %s", *ck_true ? "TRUE" : "FALSE");
+            break;
+        }
+        case CKA_CLASS: {
+            CK_OBJECT_CLASS *class;
+            if (attributes[i].ulValueLen != sizeof(CK_ULONG)) {
+                application_error("class attribute wrong length\n");
+                break;
+            }
+            class = attributes[i].pValue;
+            st_logf("class ");
+            switch (*class) {
+                case CKO_CERTIFICATE:
+                st_logf("certificate");
+                break;
+                case CKO_PUBLIC_KEY:
+                st_logf("public key");
+                break;
+                case CKO_PRIVATE_KEY:
+                st_logf("private key");
+                break;
+                case CKO_SECRET_KEY:
+                st_logf("secret key");
+                break;
+                case CKO_DOMAIN_PARAMETERS:
+                st_logf("domain parameters");
+                break;
+                default:
+                st_logf("[class %lx]", (long unsigned)*class);
+                break;
+            }
+            break;
+        }
+        case CKA_PRIVATE:
+            st_logf("private");
+            break;
+        case CKA_LABEL:
+            st_logf("label %s", attributes[i].pValue);
+            break;
+        case CKA_APPLICATION:
+            st_logf("application");
+            break;
+        case CKA_VALUE:
+            st_logf("value");
+            break;
+        case CKA_ID:
+            st_logf("id");
+            break;
+        default:
+            st_logf("[unknown 0x%08lx]", (unsigned long)attributes[i].type);
+            break;
 	}
-	case CKA_CLASS: {
-	    CK_OBJECT_CLASS *class;
-	    if (attributes[i].ulValueLen != sizeof(CK_ULONG)) {
-		application_error("class attribute wrong length\n");
-		break;
-	    }
-	    class = attributes[i].pValue;
-	    st_logf("class ");
-	    switch (*class) {
-	    case CKO_CERTIFICATE:
-		st_logf("certificate");
-		break;
-	    case CKO_PUBLIC_KEY:
-		st_logf("public key");
-		break;
-	    case CKO_PRIVATE_KEY:
-		st_logf("private key");
-		break;
-	    case CKO_SECRET_KEY:
-		st_logf("secret key");
-		break;
-	    case CKO_DOMAIN_PARAMETERS:
-		st_logf("domain parameters");
-		break;
-	    default:
-		st_logf("[class %lx]", (long unsigned)*class);
-		break;
-	    }
-	    break;
-	}
-	case CKA_PRIVATE:
-	    st_logf("private");
-	    break;
-	case CKA_LABEL:
-	    st_logf("label");
-	    break;
-	case CKA_APPLICATION:
-	    st_logf("application");
-	    break;
-	case CKA_VALUE:
-	    st_logf("value");
-	    break;
-	case CKA_ID:
-	    st_logf("id");
-	    break;
-	default:
-	    st_logf("[unknown 0x%08lx]", (unsigned long)attributes[i].type);
-	    break;
-	}
+    st_logf(" SIZE: %d", attributes[i].ulValueLen);	
 	st_logf("\n");
     }
 }
@@ -1029,6 +1034,7 @@ C_OpenSession(CK_SLOT_ID slotID,
     soft_token.state[i].session_handle =
 	(CK_SESSION_HANDLE)(random() & 0xfffff);
     *phSession = soft_token.state[i].session_handle;
+    st_logf("  == OpenSession: Session: %d\n", phSession);
 
     return CKR_OK;
 }
@@ -1175,37 +1181,45 @@ C_GetAttributeValue(CK_SESSION_HANDLE hSession,
 
     st_logf("GetAttributeValue: %lx count: %d\n",
 	    (unsigned long)HANDLE_OBJECT_ID(hObject), ulCount);
+    
+    if ((unsigned long)HANDLE_OBJECT_ID(hObject) != 2) return CKR_ARGUMENTS_BAD;
+    
     VERIFY_SESSION_HANDLE(hSession, &state);
 
     if ((ret = object_handle_to_object(hObject, &obj)) != CKR_OK) {
-	st_logf("object not found: %lx\n",
-		(unsigned long)HANDLE_OBJECT_ID(hObject));
-	return ret;
+        st_logf("object not found: %lx\n", (unsigned long)HANDLE_OBJECT_ID(hObject));
+        return ret;
     }
 
     for (i = 0; i < ulCount; i++) {
-	st_logf("	getting 0x%08lx\n", (unsigned long)pTemplate[i].type);
-	for (j = 0; j < obj->num_attributes; j++) {
-	    if (obj->attrs[j].secret) {
-		pTemplate[i].ulValueLen = (CK_ULONG)-1;
-		break;
-	    }
-	    if (pTemplate[i].type == obj->attrs[j].attribute.type) {
-		if (pTemplate[i].pValue != NULL_PTR && obj->attrs[j].secret == 0) {
-		    if (pTemplate[i].ulValueLen >= obj->attrs[j].attribute.ulValueLen)
-			memcpy(pTemplate[i].pValue, obj->attrs[j].attribute.pValue,
-			       obj->attrs[j].attribute.ulValueLen);
-		}
-		pTemplate[i].ulValueLen = obj->attrs[j].attribute.ulValueLen;
-		break;
-	    }
-	}
-	if (j == obj->num_attributes) {
-	    st_logf("key type: 0x%08lx not found\n", (unsigned long)pTemplate[i].type);
-	    pTemplate[i].ulValueLen = (CK_ULONG)-1;
-	}
+        st_logf("	getting 0x%08lx\n", (unsigned long)pTemplate[i].type);
+        for (j = 0; j < obj->num_attributes; j++) {
+            if (obj->attrs[j].secret) {
+                pTemplate[i].ulValueLen = (CK_ULONG)-1;
+                st_logf("fckn SECRET\n");
+                break;
+            }
+            if (pTemplate[i].type == obj->attrs[j].attribute.type) {
+                if (pTemplate[i].type == CKA_LABEL) st_logf("     !!! LABNEL: %s\n", obj->attrs[j].attribute.pValue);                
+                if (pTemplate[i].pValue != NULL_PTR && obj->attrs[j].secret == 0) {
+                    st_logf("     tmpl mem size: %d\n", pTemplate[i].ulValueLen);
+                    if (pTemplate[i].ulValueLen >= obj->attrs[j].attribute.ulValueLen) {
+                        memcpy(pTemplate[i].pValue, obj->attrs[j].attribute.pValue,
+                            obj->attrs[j].attribute.ulValueLen);
+                    }
+                }
+                pTemplate[i].ulValueLen = obj->attrs[j].attribute.ulValueLen;
+                break;
+            }
+        }
+        if (j == obj->num_attributes) {
+            st_logf("key type: 0x%08lx not found\n", (unsigned long)pTemplate[i].type);
+            pTemplate[i].ulValueLen = (CK_ULONG)-1;
+        }
 
     }
+    
+    print_attributes(pTemplate, ulCount);
     return CKR_OK;
 }
 
@@ -1221,38 +1235,38 @@ C_FindObjectsInit(CK_SESSION_HANDLE hSession,
     VERIFY_SESSION_HANDLE(hSession, &state);
 
     if (state->find.next_object != -1) {
-	application_error("application didn't do C_FindObjectsFinal\n");
-	find_object_final(state);
+        application_error("application didn't do C_FindObjectsFinal\n");
+        find_object_final(state);
     }
     if (ulCount) {
-	CK_ULONG i;
-	size_t len;
+        CK_ULONG i;
+        size_t len;
 
-	print_attributes(pTemplate, ulCount);
+        print_attributes(pTemplate, ulCount);
 
-	state->find.attributes = 
-	    calloc(1, ulCount * sizeof(state->find.attributes[0]));
-	if (state->find.attributes == NULL)
-	    return CKR_DEVICE_MEMORY;
-	for (i = 0; i < ulCount; i++) {
-	    state->find.attributes[i].pValue = 
-		malloc(pTemplate[i].ulValueLen);
-	    if (state->find.attributes[i].pValue == NULL) {
-		find_object_final(state);
-		return CKR_DEVICE_MEMORY;
-	    }
-	    memcpy(state->find.attributes[i].pValue,
-		   pTemplate[i].pValue, pTemplate[i].ulValueLen);
-	    state->find.attributes[i].type = pTemplate[i].type;
-	    state->find.attributes[i].ulValueLen = pTemplate[i].ulValueLen;
-	}
-	state->find.num_attributes = ulCount;
-	state->find.next_object = 0;
+        state->find.attributes = 
+            calloc(1, ulCount * sizeof(state->find.attributes[0]));
+        if (state->find.attributes == NULL)
+            return CKR_DEVICE_MEMORY;
+        for (i = 0; i < ulCount; i++) {
+            state->find.attributes[i].pValue = 
+            malloc(pTemplate[i].ulValueLen);
+            if (state->find.attributes[i].pValue == NULL) {
+            find_object_final(state);
+            return CKR_DEVICE_MEMORY;
+            }
+            memcpy(state->find.attributes[i].pValue,
+            pTemplate[i].pValue, pTemplate[i].ulValueLen);
+            state->find.attributes[i].type = pTemplate[i].type;
+            state->find.attributes[i].ulValueLen = pTemplate[i].ulValueLen;
+        }
+        state->find.num_attributes = ulCount;
+        state->find.next_object = 0;
     } else {
-	st_logf("find all objects\n");
-	state->find.attributes = NULL;
-	state->find.num_attributes = 0;
-	state->find.next_object = 0;
+        st_logf("find all objects\n");
+        state->find.attributes = NULL;
+        state->find.num_attributes = 0;
+        state->find.next_object = 0;
     }
 
     return CKR_OK;
@@ -1288,11 +1302,14 @@ C_FindObjects(CK_SESSION_HANDLE hSession,
                     state->find.attributes,
                     state->find.num_attributes)) {
             *phObject++ = soft_token.object.objs[i]->object_handle;
+            st_logf("  == Object: %d\n", soft_token.object.objs[i]->object_handle);
             ulMaxObjectCount--;
             (*pulObjectCount)++;
             if (ulMaxObjectCount == 0) break;
         }
     }
+    
+    st_logf("  == pulObjectCount: %d\n", *pulObjectCount);
     return CKR_OK;
 }
 

@@ -91,9 +91,9 @@ int soft_token_t::objects() const
     return result;
 }
 
-std::vector<std::size_t> soft_token_t::object_ids() const
+std::vector<CK_ULONG> soft_token_t::object_ids() const
 {
-    std::vector<std::size_t> result;
+    std::vector<CK_ULONG> result;
     std::hash<std::string> hash;
     each_file(p_->config.get<std::string>("path"), [&result, &hash] (std::string s) {
         if (check_file_is_private_key(s)) {
@@ -107,7 +107,7 @@ std::vector<std::size_t> soft_token_t::object_ids() const
     return result;
 }
 
-std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> soft_token_t::attributes(std::size_t id) const
+std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> soft_token_t::attributes(CK_ULONG id) const
 {
     std::hash<std::string> hash;
     std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> result;
@@ -116,6 +116,7 @@ std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> soft_token_t::attributes(std::size_t i
             std::ifstream t(s);
             std::string str((std::istreambuf_iterator<char>(t)), std::istreambuf_iterator<char>());
             if (hash(str) == id) {
+                std::cerr << "ID found:" << id << std::endl;
                 result = read_attributes(s, str, id);
                 return true;
             }
@@ -134,7 +135,7 @@ inline CK_ATTRIBUTE create_object(CK_ATTRIBUTE_TYPE type, CK_VOID_PTR src, CK_UL
     return attr;
 }
 
-std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> soft_token_t::read_attributes(const std::string& file, const std::string& data, std::size_t& id) const
+std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> soft_token_t::read_attributes(const std::string& file, const std::string& data, CK_ULONG& id) const
 {
 //     std::cerr << file << std::endl;
     
@@ -144,30 +145,33 @@ std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> soft_token_t::read_attributes(const st
     CK_MECHANISM_TYPE mech_type = CKM_RSA_X_509;
     CK_FLAGS flags = 0;
     
+   
     std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> attributes = {
         {CKA_CLASS, create_object(CKA_CLASS,     &klass, sizeof(klass))},
         {CKA_TOKEN, create_object(CKA_TOKEN,     &bool_true, sizeof(bool_true))},
         {CKA_PRIVATE, create_object(CKA_PRIVATE,   &bool_false, sizeof(bool_false))},
         {CKA_MODIFIABLE, create_object(CKA_MODIFIABLE,&bool_false, sizeof(bool_false))},
-//         {CKA_LABEL, create_object(CKA_LABEL,     file.c_str(), file.size())},
+        {CKA_LABEL, create_object(CKA_LABEL,     file.c_str(), file.size() + 1)},
          
         {CKA_ID, create_object(CKA_ID,      &id, sizeof(id))},
-        {CKA_ID, create_object(CKA_DERIVE,  &bool_false, sizeof(bool_false))},
-        {CKA_ID, create_object(CKA_LOCAL,   &bool_false, sizeof(bool_false))},
-        {CKA_ID, create_object(CKA_KEY_GEN_MECHANISM, &mech_type, sizeof(mech_type))},
+        {CKA_DERIVE, create_object(CKA_DERIVE,  &bool_false, sizeof(bool_false))},
+        {CKA_LOCAL, create_object(CKA_LOCAL,   &bool_false, sizeof(bool_false))},
+        {CKA_KEY_GEN_MECHANISM, create_object(CKA_KEY_GEN_MECHANISM, &mech_type, sizeof(mech_type))},
         
-        {CKA_ID, create_object(CKA_SENSITIVE, &bool_true, sizeof(bool_true))},
-        {CKA_ID, create_object(CKA_SECONDARY_AUTH, &bool_false, sizeof(bool_false))},
+        {CKA_SENSITIVE, create_object(CKA_SENSITIVE, &bool_true, sizeof(bool_true))},
+        {CKA_SECONDARY_AUTH, create_object(CKA_SECONDARY_AUTH, &bool_false, sizeof(bool_false))},
         
-        {CKA_ID, create_object(CKA_AUTH_PIN_FLAGS, &flags, sizeof(flags))},
-        {CKA_ID, create_object(CKA_DECRYPT, &bool_true, sizeof(bool_true))},
+        {CKA_AUTH_PIN_FLAGS, create_object(CKA_AUTH_PIN_FLAGS, &flags, sizeof(flags))},
+        {CKA_DECRYPT, create_object(CKA_DECRYPT, &bool_true, sizeof(bool_true))},
         
-        {CKA_ID, create_object(CKA_SIGN, &bool_true, sizeof(bool_true))},
-        {CKA_ID, create_object(CKA_SIGN_RECOVER, &bool_false, sizeof(bool_false))},
-        {CKA_ID, create_object(CKA_UNWRAP, &bool_true, sizeof(bool_true))},
-        {CKA_ID, create_object(CKA_EXTRACTABLE, &bool_true, sizeof(bool_true))},
-        {CKA_ID, create_object(CKA_NEVER_EXTRACTABLE, &bool_false, sizeof(bool_false))},
+        {CKA_SIGN, create_object(CKA_SIGN, &bool_true, sizeof(bool_true))},
+        {CKA_SIGN_RECOVER, create_object(CKA_SIGN_RECOVER, &bool_false, sizeof(bool_false))},
+        {CKA_UNWRAP, create_object(CKA_UNWRAP, &bool_true, sizeof(bool_true))},
+        {CKA_EXTRACTABLE, create_object(CKA_EXTRACTABLE, &bool_true, sizeof(bool_true))},
+        {CKA_NEVER_EXTRACTABLE, create_object(CKA_NEVER_EXTRACTABLE, &bool_false, sizeof(bool_false))},
     };
+    
+
     
     return attributes;
      

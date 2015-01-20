@@ -11,7 +11,9 @@
 #include <cstdlib>
 #include <iostream>
 #include <fstream>
+#include <algorithm>
 #include <memory>
+#include <list>
 
 #include <boost/foreach.hpp>
 
@@ -38,11 +40,32 @@ static void st_logf(const char *fmt, ...)
 template <int ID>
 struct func_t {
     static CK_RV not_supported() {
-        std::cerr << "function " << ID << " not supported" << std::endl;
+        std::cout << "function " << ID << " not supported" << std::endl;
         return CKR_FUNCTION_NOT_SUPPORTED;
     }
 };
 
+
+struct session_t {
+    
+    session_t() : id(++_id) {}
+    session_t(int id) : id(id) {}
+    
+    bool operator==(const session_t& other) const {
+        return id == other.id;
+    }
+    
+    std::vector<CK_ULONG> objects;
+    std::vector<CK_ULONG>::iterator current;
+    const int id;
+private:
+    static int _id;
+};
+
+
+int session_t::_id = 0;
+
+std::list<session_t> sessions;
 
 extern "C" {
   
@@ -260,7 +283,9 @@ CK_RV C_OpenSession(CK_SLOT_ID slotID,
 
 //     soft_token.state[i].session_handle =
 //     (CK_SESSION_HANDLE)(random() & 0xfffff);
-    *phSession = 44;
+    
+    auto it = sessions.insert(sessions.end(), session_t());
+    *phSession = it->id;
 
     return CKR_OK;
 }
@@ -327,7 +352,7 @@ print_attributes(const CK_ATTRIBUTE *attributes,
         st_logf("private");
         break;
     case CKA_LABEL:
-        st_logf("label");
+        st_logf("label == %s", attributes[i].pValue);
         break;
     case CKA_APPLICATION:
         st_logf("application");
@@ -342,6 +367,8 @@ print_attributes(const CK_ATTRIBUTE *attributes,
         st_logf("[unknown 0x%08lx]", (unsigned long)attributes[i].type);
         break;
     }
+    
+    st_logf(" SIZE: %d", attributes[i].ulValueLen);
     st_logf("\n");
     }
 }
@@ -387,6 +414,10 @@ CK_RV C_FindObjectsInit(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, 
 //         state->find.attributes = NULL;
 //         state->find.num_attributes = 0;
 //         state->find.next_object = 0;
+
+        auto session = std::find(sessions.begin(), sessions.end(), hSession);
+        session->objects = soft_token->object_ids();
+        session->current = session->objects.begin();
     }
 
     return CKR_OK;
@@ -403,21 +434,26 @@ CK_RV C_FindObjects(CK_SESSION_HANDLE hSession,
         return CKR_ARGUMENTS_BAD;
     }
     
+    auto session = std::find(sessions.begin(), sessions.end(), hSession);
+    
     *pulObjectCount = 0;
-    BOOST_FOREACH(auto id, soft_token->object_ids()) {
-        std::cerr << " == fille object " << id;
-        *phObject++ = id;
+    
+    for(; session->current != session->objects.end(); ++session->current) {
+        std::cout << " == fille object " << *session->current << std::endl;
+        *phObject++ = *session->current;
         (*pulObjectCount)++;
         ulMaxObjectCount--;
-        if (ulMaxObjectCount == 0) break;
+        if (ulMaxObjectCount == 0) break;        
     }
     
+    st_logf("  == pulObjectCount: %d\n", *pulObjectCount);
     return CKR_OK;
 }
 
 CK_RV C_FindObjectsFinal(CK_SESSION_HANDLE hSession)
 {
     st_logf("FindObjectsFinal\n");
+    sessions.remove(hSession);
     return CKR_OK;
 }
 
@@ -429,7 +465,9 @@ CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, 
     CK_RV ret;
     int j;
 
-    st_logf("GetAttributeValue: %lx ulCount: %d\n", hObject, ulCount);
+    st_logf("** GetAttributeValue: %lu ulCount: %d\n", hObject, ulCount);
+    
+    
 //     VERIFY_SESSION_HANDLE(hSession, &state);
 
 //     if ((ret = object_handle_to_object(hObject, &obj)) != CKR_OK) {
@@ -443,20 +481,27 @@ CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, 
     for (i = 0; i < ulCount; i++) {
         st_logf("   getting 0x%08lx i:%d\n", (unsigned long)pTemplate[i].type, i);
 
-        if (pTemplate[i].pValue != NULL_PTR)
-        {
 //             std::cout << "assign" << std::endl;
             auto it = attrs.find(pTemplate[i].type);
-            if (it != attrs.end() && (pTemplate[i].ulValueLen >= it->second.ulValueLen)) {
-//                 std::cout << "copy: " << it->second.pValue << " l:" << it->second.ulValueLen << std::endl;
-                memcpy(pTemplate[i].pValue, it->second.pValue, it->second.ulValueLen);
+            
+            if (pTemplate[i].type == CKA_LABEL) std::cout << " !!! LABNEL:" << std::string(it->second.pValue) << std::endl; 
+            std::cout << "tmpl mem size:" << pTemplate[i].ulValueLen << std::endl;
+            if (it != attrs.end())
+            {
+                if (pTemplate[i].pValue != NULL_PTR && pTemplate[i].ulValueLen >= it->second.ulValueLen)
+                {
+                    memcpy(pTemplate[i].pValue, it->second.pValue, it->second.ulValueLen);
+                }
+
                 pTemplate[i].ulValueLen = it->second.ulValueLen;
             }
             
+            
             if (it == attrs.end()) {
+                st_logf("key type: 0x%08lx not found\n", (unsigned long)pTemplate[i].type);
                 pTemplate[i].ulValueLen = (CK_ULONG)-1;
             }
-        }
+
 
 //         
         
@@ -482,6 +527,8 @@ CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, 
 //         }
 
     }
+    
+    print_attributes(pTemplate, ulCount);
     return CKR_OK;
 }
 

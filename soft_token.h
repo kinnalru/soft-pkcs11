@@ -22,13 +22,14 @@ public:
     }
 
     int objects() const;
-    std::vector<std::size_t> object_ids() const;
+    std::vector<CK_ULONG> object_ids() const;
     
-    std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> attributes(std::size_t id) const;
+    std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> attributes(CK_ULONG id) const;
+    
 
 private:
     void each_file(const std::string& path, std::function<bool(std::string)> f) const;
-    std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> read_attributes(const std::string& file, const std::string& data, std::size_t& id) const;
+    std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> read_attributes(const std::string& file, const std::string& data, CK_ULONG& id) const;
   
     struct Pimpl;
     std::auto_ptr<Pimpl> p_;
