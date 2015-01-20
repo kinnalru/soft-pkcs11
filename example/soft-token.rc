@@ -5,6 +5,11 @@
 #
 #	$Id: soft-token.rc,v 1.1 2004/05/02 16:22:47 lha Exp $
 #
-lha	Love's certificate	/secure/lha/su/CA/lha.crt	/secure/lha/su/CA/lha-nopw.key
-su	Stockholm university's CA	/secure/lha/su/CA/su-ca.crt
-anchor	SWUPKI policy CA root		/secure/lha/su/CA/swupki-pca.crt
+
+test	Testlabel	/home/jerry/devel/soft-pkcs/example/data/ca.crt	/home/jerry/devel/soft-pkcs/example/data/ca.key
+
+#lha	Love's certificate	/secure/lha/su/CA/lha.crt	/secure/lha/su/CA/lha-nopw.key
+#su	Stockholm university's CA	/secure/lha/su/CA/su-ca.crt
+#anchor	SWUPKI policy CA root		/secure/lha/su/CA/swupki-pca.crt
+
+path=/home/jerry/devel/soft-pkcs/keys

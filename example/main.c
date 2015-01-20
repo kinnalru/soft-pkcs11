@@ -779,7 +779,7 @@ C_Initialize(CK_VOID_PTR a)
     soft_token.object.num_objs = 0;
     
     soft_token.logfile = NULL;
-#if 0
+#if 1
     soft_token.logfile = stdout;
 #endif
 #if 0
@@ -1173,8 +1173,8 @@ C_GetAttributeValue(CK_SESSION_HANDLE hSession,
     CK_RV ret;
     int j;
 
-    st_logf("GetAttributeValue: %lx\n",
-	    (unsigned long)HANDLE_OBJECT_ID(hObject));
+    st_logf("GetAttributeValue: %lx count: %d\n",
+	    (unsigned long)HANDLE_OBJECT_ID(hObject), ulCount);
     VERIFY_SESSION_HANDLE(hSession, &state);
 
     if ((ret = object_handle_to_object(hObject, &obj)) != CKR_OK) {

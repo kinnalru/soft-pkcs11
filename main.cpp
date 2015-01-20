@@ -425,10 +425,24 @@ CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, 
     auto attrs = soft_token->attributes(hObject);
     
     for (i = 0; i < ulCount; i++) {
-        st_logf("   getting 0x%08lx\n", (unsigned long)pTemplate[i].type);
-        
+        st_logf("   getting 0x%08lx i:%d\n", (unsigned long)pTemplate[i].type, i);
 
-//         memcpy(pTemplate[i].pValue, attrs[pTemplate[i].type].pValue, attrs[pTemplate[i].type].ulValueLen);
+        if (pTemplate[i].pValue != NULL_PTR)
+        {
+//             std::cout << "assign" << std::endl;
+            auto it = attrs.find(pTemplate[i].type);
+            if (it != attrs.end() && (pTemplate[i].ulValueLen >= it->second.ulValueLen)) {
+//                 std::cout << "copy: " << it->second.pValue << " l:" << it->second.ulValueLen << std::endl;
+                memcpy(pTemplate[i].pValue, it->second.pValue, it->second.ulValueLen);
+                pTemplate[i].ulValueLen = it->second.ulValueLen;
+            }
+            
+            if (it == attrs.end()) {
+                pTemplate[i].ulValueLen = (CK_ULONG)-1;
+            }
+        }
+
+//         
         
         
 //         for (j = 0; j < obj->num_attributes; j++) {
