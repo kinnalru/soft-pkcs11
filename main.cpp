@@ -35,13 +35,25 @@ static void st_logf(const char *fmt, ...)
     va_end(ap);
 }
 
+template <int ID>
+struct func_t {
+    static CK_RV not_supported() {
+        std::cerr << "function " << ID << " not supported" << std::endl;
+        return CKR_FUNCTION_NOT_SUPPORTED;
+    }
+};
+
+
 extern "C" {
   
-static CK_RV func_not_supported(void)
-{
-    log("function not supported");
-    return CKR_FUNCTION_NOT_SUPPORTED;
-}
+// static CK_RV func_not_supported(void)
+// {
+//     log("function not supported");
+//     return CKR_FUNCTION_NOT_SUPPORTED;
+// }
+
+
+
   
 CK_RV C_Initialize(CK_VOID_PTR a)
 {
@@ -253,6 +265,13 @@ CK_RV C_OpenSession(CK_SLOT_ID slotID,
     return CKR_OK;
 }
 
+CK_RV C_CloseSession(CK_SESSION_HANDLE hSession)
+{
+    st_logf("CloseSession\n");
+
+    return CKR_OK;
+}
+
 static void
 print_attributes(const CK_ATTRIBUTE *attributes,
          CK_ULONG num_attributes)
@@ -331,7 +350,7 @@ CK_RV C_FindObjectsInit(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, 
 {
 //     struct session_state *state;
 
-    st_logf("FindObjectsInit: %d\n", hSession);
+    st_logf("FindObjectsInit: Session: %d ulCount: %d\n", hSession, ulCount);
 
 //     VERIFY_SESSION_HANDLE(hSession, &state);
 
@@ -340,10 +359,10 @@ CK_RV C_FindObjectsInit(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, 
 //         find_object_final(state);
 //     }
     if (ulCount) {
-        CK_ULONG i;
-        size_t len;
+//         CK_ULONG i;
+//         size_t len;
 
-        print_attributes(pTemplate, ulCount);
+//         print_attributes(pTemplate, ulCount);
 
 //         state->find.attributes = 
 //             calloc(1, ulCount * sizeof(state->find.attributes[0]));
@@ -364,7 +383,7 @@ CK_RV C_FindObjectsInit(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, 
 //         state->find.num_attributes = ulCount;
 //         state->find.next_object = 0;
     } else {
-        st_logf("find all objects\n");
+        st_logf(" == find all objects\n");
 //         state->find.attributes = NULL;
 //         state->find.num_attributes = 0;
 //         state->find.next_object = 0;
@@ -378,30 +397,27 @@ CK_RV C_FindObjects(CK_SESSION_HANDLE hSession,
           CK_ULONG ulMaxObjectCount,
           CK_ULONG_PTR pulObjectCount)
 {
-    struct session_state *state;
-    int i;
+    st_logf("FindObjects Session: %d ulMaxObjectCount: %d\n", hSession, ulMaxObjectCount);
 
-    st_logf("FindObjects %d\n", hSession);
-
-//     VERIFY_SESSION_HANDLE(hSession, &state);
-
-//     if (state->find.next_object == -1) {
-//     application_error("application didn't do C_FindObjectsInit\n");
-//         return CKR_ARGUMENTS_BAD;
-//     }
-    
     if (ulMaxObjectCount == 0) {
-//     application_error("application asked for 0 objects\n");
         return CKR_ARGUMENTS_BAD;
     }
+    
     *pulObjectCount = 0;
     BOOST_FOREACH(auto id, soft_token->object_ids()) {
+        std::cerr << " == fille object " << id;
         *phObject++ = id;
         (*pulObjectCount)++;
         ulMaxObjectCount--;
         if (ulMaxObjectCount == 0) break;
     }
     
+    return CKR_OK;
+}
+
+CK_RV C_FindObjectsFinal(CK_SESSION_HANDLE hSession)
+{
+    st_logf("FindObjectsFinal\n");
     return CKR_OK;
 }
 
@@ -483,64 +499,64 @@ CK_FUNCTION_LIST funcs = {
     C_GetMechanismList,
     C_GetMechanismInfo,
     C_InitToken,
-    (void *)func_not_supported, /* C_InitPIN */
-    (void *)func_not_supported, /* C_SetPIN */
+    (void *)func_t<1>::not_supported, /* C_InitPIN */
+    (void *)func_t<2>::not_supported, /* C_SetPIN */
     C_OpenSession,
-        (void *)func_not_supported, //C_CloseSession,
-        (void *)func_not_supported, //C_CloseAllSessions,
-        (void *)func_not_supported, //C_GetSessionInfo,
-    (void *)func_not_supported, /* C_GetOperationState */
-    (void *)func_not_supported, /* C_SetOperationState */
-        (void *)func_not_supported, //C_Login,
-        (void *)func_not_supported, //C_Logout,
-    (void *)func_not_supported, /* C_CreateObject */
-    (void *)func_not_supported, /* C_CopyObject */
-    (void *)func_not_supported, /* C_DestroyObject */
-    (void *)func_not_supported, /* C_GetObjectSize */
+    C_CloseSession,
+        (void *)func_t<4>::not_supported, //C_CloseAllSessions,
+        (void *)func_t<5>::not_supported, //C_GetSessionInfo,
+    (void *)func_t<6>::not_supported, /* C_GetOperationState */
+    (void *)func_t<7>::not_supported, /* C_SetOperationState */
+        (void *)func_t<8>::not_supported, //C_Login,
+        (void *)func_t<9>::not_supported, //C_Logout,(void *)func_t::
+    (void *)func_t<10>::not_supported, /* C_CreateObject */
+    (void *)func_t<11>::not_supported, /* C_CopyObject */
+    (void *)func_t<12>::not_supported, /* C_DestroyObject */
+    (void *)func_t<13>::not_supported, /* C_GetObjectSize */
     C_GetAttributeValue,
-    (void *)func_not_supported, /* C_SetAttributeValue */
+    (void *)func_t<14>::not_supported, /* C_SetAttributeValue */
     C_FindObjectsInit,
     C_FindObjects,
-        (void *)func_not_supported, //C_FindObjectsFinal,
-        (void *)func_not_supported, //C_EncryptInit,
-        (void *)func_not_supported, //C_Encrypt,
-        (void *)func_not_supported, //C_EncryptUpdate,
-        (void *)func_not_supported, //C_EncryptFinal,
-        (void *)func_not_supported, //C_DecryptInit,
-        (void *)func_not_supported, //C_Decrypt,
-        (void *)func_not_supported, //C_DecryptUpdate,
-        (void *)func_not_supported, //C_DecryptFinal,
-        (void *)func_not_supported, //C_DigestInit,
-    (void *)func_not_supported, /* C_Digest */
-    (void *)func_not_supported, /* C_DigestUpdate */
-    (void *)func_not_supported, /* C_DigestKey */
-    (void *)func_not_supported, /* C_DigestFinal */
-        (void *)func_not_supported, //C_SignInit,
-        (void *)func_not_supported, //C_Sign,
-        (void *)func_not_supported, //C_SignUpdate,
-        (void *)func_not_supported, //C_SignFinal,
-    (void *)func_not_supported, /* C_SignRecoverInit */
-    (void *)func_not_supported, /* C_SignRecover */
-        (void *)func_not_supported, //C_VerifyInit,
-        (void *)func_not_supported, //C_Verify,
-        (void *)func_not_supported, //C_VerifyUpdate,
-        (void *)func_not_supported, //C_VerifyFinal,
-    (void *)func_not_supported, /* C_VerifyRecoverInit */
-    (void *)func_not_supported, /* C_VerifyRecover */
-    (void *)func_not_supported, /* C_DigestEncryptUpdate */
-    (void *)func_not_supported, /* C_DecryptDigestUpdate */
-    (void *)func_not_supported, /* C_SignEncryptUpdate */
-    (void *)func_not_supported, /* C_DecryptVerifyUpdate */
-    (void *)func_not_supported, /* C_GenerateKey */
-    (void *)func_not_supported, /* C_GenerateKeyPair */
-    (void *)func_not_supported, /* C_WrapKey */
-    (void *)func_not_supported, /* C_UnwrapKey */
-    (void *)func_not_supported, /* C_DeriveKey */
-    (void *)func_not_supported, /* C_SeedRandom */
-        (void *)func_not_supported, //C_GenerateRandom,
-    (void *)func_not_supported, /* C_GetFunctionStatus */
-    (void *)func_not_supported, /* C_CancelFunction */
-    (void *)func_not_supported  /* C_WaitForSlotEvent */
+    C_FindObjectsFinal,
+        (void *)func_t<16>::not_supported, //C_EncryptInit,
+        (void *)func_t<17>::not_supported, //C_Encrypt,
+        (void *)func_t<18>::not_supported, //C_EncryptUpdate,
+        (void *)func_t<19>::not_supported, //C_EncryptFinal,
+        (void *)func_t<20>::not_supported, //C_DecryptInit,
+        (void *)func_t<21>::not_supported, //C_Decrypt,
+        (void *)func_t<22>::not_supported, //C_DecryptUpdate,
+        (void *)func_t<23>::not_supported, //C_DecryptFinal,
+        (void *)func_t<24>::not_supported, //C_DigestInit,
+    (void *)func_t<25>::not_supported, /* C_Digest */
+    (void *)func_t<26>::not_supported, /* C_DigestUpdate */
+    (void *)func_t<27>::not_supported, /* C_DigestKey */
+    (void *)func_t<28>::not_supported, /* C_DigestFinal */
+        (void *)func_t<29>::not_supported, //C_SignInit,
+        (void *)func_t<30>::not_supported, //C_Sign,
+        (void *)func_t<31>::not_supported, //C_SignUpdate,
+        (void *)func_t<32>::not_supported, //C_SignFinal,
+    (void *)func_t<33>::not_supported, /* C_SignRecoverInit */
+    (void *)func_t<34>::not_supported, /* C_SignRecover */
+        (void *)func_t<35>::not_supported, //C_VerifyInit,
+        (void *)func_t<36>::not_supported, //C_Verify,
+        (void *)func_t<37>::not_supported, //C_VerifyUpdate,
+        (void *)func_t<38>::not_supported, //C_VerifyFinal,
+    (void *)func_t<39>::not_supported, /* C_VerifyRecoverInit */
+    (void *)func_t<40>::not_supported, /* C_VerifyRecover */
+    (void *)func_t<41>::not_supported, /* C_DigestEncryptUpdate */
+    (void *)func_t<42>::not_supported, /* C_DecryptDigestUpdate */
+    (void *)func_t<43>::not_supported, /* C_SignEncryptUpdate */
+    (void *)func_t<44>::not_supported, /* C_DecryptVerifyUpdate */
+    (void *)func_t<45>::not_supported, /* C_GenerateKey */
+    (void *)func_t<46>::not_supported, /* C_GenerateKeyPair */
+    (void *)func_t<47>::not_supported, /* C_WrapKey */
+    (void *)func_t<48>::not_supported, /* C_UnwrapKey */
+    (void *)func_t<49>::not_supported, /* C_DeriveKey */
+    (void *)func_t<50>::not_supported, /* C_SeedRandom */
+        (void *)func_t<51>::not_supported, //C_GenerateRandom,
+    (void *)func_t<52>::not_supported, /* C_GetFunctionStatus */
+    (void *)func_t<53>::not_supported, /* C_CancelFunction */
+    (void *)func_t<54>::not_supported  /* C_WaitForSlotEvent */
 };
 
 

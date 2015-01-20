@@ -75,7 +75,9 @@ soft_token_t::soft_token_t(const std::string& rcfile)
 
 soft_token_t::~soft_token_t()
 {
-
+    std::cerr << "DESTRUCTOR 1" << std::endl;
+//     p_.reset();
+    std::cerr << "DESTRUCTOR 2" << std::endl;
 }
 
 int soft_token_t::objects() const
@@ -124,9 +126,9 @@ std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> soft_token_t::attributes(std::size_t i
     return result;
 }
 
-
+ 
 inline CK_ATTRIBUTE create_object(CK_ATTRIBUTE_TYPE type, CK_VOID_PTR src, CK_ULONG len) {
-    CK_ATTRIBUTE attr = {type, malloc(len), len};
+    CK_ATTRIBUTE attr = {type, malloc(len), len}; 
     if (!attr.pValue) throw std::bad_alloc();
     memcpy(attr.pValue, src, len);
     return attr;
@@ -139,47 +141,45 @@ std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> soft_token_t::read_attributes(const st
     CK_OBJECT_CLASS klass = CKO_PRIVATE_KEY;
     CK_BBOOL bool_true = CK_TRUE;
     CK_BBOOL bool_false = CK_FALSE;
+    CK_MECHANISM_TYPE mech_type = CKM_RSA_X_509;
+    CK_FLAGS flags = 0;
     
     std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> attributes = {
         {CKA_CLASS, create_object(CKA_CLASS,     &klass, sizeof(klass))},
         {CKA_TOKEN, create_object(CKA_TOKEN,     &bool_true, sizeof(bool_true))},
         {CKA_PRIVATE, create_object(CKA_PRIVATE,   &bool_false, sizeof(bool_false))},
         {CKA_MODIFIABLE, create_object(CKA_MODIFIABLE,&bool_false, sizeof(bool_false))},
-        {CKA_LABEL, create_object(CKA_LABEL,     file.c_str(), file.size())},
+//         {CKA_LABEL, create_object(CKA_LABEL,     file.c_str(), file.size())},
+         
+        {CKA_ID, create_object(CKA_ID,      &id, sizeof(id))},
+        {CKA_ID, create_object(CKA_DERIVE,  &bool_false, sizeof(bool_false))},
+        {CKA_ID, create_object(CKA_LOCAL,   &bool_false, sizeof(bool_false))},
+        {CKA_ID, create_object(CKA_KEY_GEN_MECHANISM, &mech_type, sizeof(mech_type))},
         
-        {CKA_ID, create_object(CKA_ID, &id, sizeof(id))},
+        {CKA_ID, create_object(CKA_SENSITIVE, &bool_true, sizeof(bool_true))},
+        {CKA_ID, create_object(CKA_SECONDARY_AUTH, &bool_false, sizeof(bool_false))},
+        
+        {CKA_ID, create_object(CKA_AUTH_PIN_FLAGS, &flags, sizeof(flags))},
+        {CKA_ID, create_object(CKA_DECRYPT, &bool_true, sizeof(bool_true))},
+        
+        {CKA_ID, create_object(CKA_SIGN, &bool_true, sizeof(bool_true))},
+        {CKA_ID, create_object(CKA_SIGN_RECOVER, &bool_false, sizeof(bool_false))},
+        {CKA_ID, create_object(CKA_UNWRAP, &bool_true, sizeof(bool_true))},
+        {CKA_ID, create_object(CKA_EXTRACTABLE, &bool_true, sizeof(bool_true))},
+        {CKA_ID, create_object(CKA_NEVER_EXTRACTABLE, &bool_false, sizeof(bool_false))},
     };
     
     return attributes;
-    
-//     c = CKO_PRIVATE_KEY;
-//     add_object_attribute(o, 0, CKA_CLASS, &c, sizeof(c));
-//     add_object_attribute(o, 0, CKA_TOKEN, &bool_true, sizeof(bool_true));
-//     add_object_attribute(o, 0, CKA_PRIVATE, &bool_true, sizeof(bool_false));
-//     add_object_attribute(o, 0, CKA_MODIFIABLE, &bool_false, sizeof(bool_false));
-//     add_object_attribute(o, 0, CKA_LABEL, label, strlen(label));
-// 
+     
 //     add_object_attribute(o, 0, CKA_KEY_TYPE, &key_type, sizeof(key_type));
-//     add_object_attribute(o, 0, CKA_ID, id, id_len);
+
 //     add_object_attribute(o, 0, CKA_START_DATE, "", 1); /* XXX */
 //     add_object_attribute(o, 0, CKA_END_DATE, "", 1); /* XXX */
-//     add_object_attribute(o, 0, CKA_DERIVE, &bool_false, sizeof(bool_false));
-//     add_object_attribute(o, 0, CKA_LOCAL, &bool_false, sizeof(bool_false));
-//     mech_type = CKM_RSA_X_509;
-//     add_object_attribute(o, 0, CKA_KEY_GEN_MECHANISM, &mech_type, sizeof(mech_type));
+
 // 
 //     add_object_attribute(o, 0, CKA_SUBJECT, subject_data, subject_length);
-//     add_object_attribute(o, 0, CKA_SENSITIVE, &bool_true, sizeof(bool_true));
-//     add_object_attribute(o, 0, CKA_SECONDARY_AUTH, &bool_false, sizeof(bool_true));
-//     flags = 0;
-//     add_object_attribute(o, 0, CKA_AUTH_PIN_FLAGS, &flags, sizeof(flags));
-// 
-//     add_object_attribute(o, 0, CKA_DECRYPT, &bool_true, sizeof(bool_true));
-//     add_object_attribute(o, 0, CKA_SIGN, &bool_true, sizeof(bool_true));
-//     add_object_attribute(o, 0, CKA_SIGN_RECOVER, &bool_false, sizeof(bool_false));
-//     add_object_attribute(o, 0, CKA_UNWRAP, &bool_true, sizeof(bool_true));
-//     add_object_attribute(o, 0, CKA_EXTRACTABLE, &bool_true, sizeof(bool_true));
-//     add_object_attribute(o, 0, CKA_NEVER_EXTRACTABLE, &bool_false, sizeof(bool_false));
+
+
 }
 
 
@@ -194,10 +194,12 @@ void soft_token_t::each_file(const std::string& path, std::function<bool(std::st
 {
     if (fs::exists(path) && fs::is_directory(path))
     {
-        for(fs::directory_iterator dir_iter(path); dir_iter != fs::directory_iterator(); ++dir_iter)
+        fs::directory_iterator end_it = fs::directory_iterator();
+        for(fs::directory_iterator dir_iter(path); dir_iter != end_it; ++dir_iter)
         {
             if (fs::is_regular_file(dir_iter->status()))
             {
+                std::cerr << dir_iter->path() << std::endl;
                 if (f(dir_iter->path().c_str())) return;
             }
         }

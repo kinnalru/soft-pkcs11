@@ -114,10 +114,10 @@ application_error(const char *fmt, ...)
 static void
 st_logf(const char *fmt, ...)
 {
+    if (soft_token.logfile == NULL) return;
     va_list ap;
-    if (soft_token.logfile == NULL)
-	return;
     va_start(ap, fmt);
+    fprintf(soft_token.logfile, "                                   ** ");
     vfprintf(soft_token.logfile, fmt, ap);
     va_end(ap);
     fflush(soft_token.logfile);
@@ -1272,26 +1272,26 @@ C_FindObjects(CK_SESSION_HANDLE hSession,
     VERIFY_SESSION_HANDLE(hSession, &state);
 
     if (state->find.next_object == -1) {
-	application_error("application didn't do C_FindObjectsInit\n");
-	return CKR_ARGUMENTS_BAD;
+        application_error("application didn't do C_FindObjectsInit\n");
+        return CKR_ARGUMENTS_BAD;
     }
     if (ulMaxObjectCount == 0) {
-	application_error("application asked for 0 objects\n");
-	return CKR_ARGUMENTS_BAD;
+        application_error("application asked for 0 objects\n");
+        return CKR_ARGUMENTS_BAD;
     }
+    
     *pulObjectCount = 0;
     for (i = state->find.next_object; i < soft_token.object.num_objs; i++) {
-	st_logf("FindObjects: %d\n", i);
-	state->find.next_object = i + 1;
-	if (attributes_match(soft_token.object.objs[i],
-			     state->find.attributes,
-			     state->find.num_attributes)) {
-	    *phObject++ = soft_token.object.objs[i]->object_handle;
-	    ulMaxObjectCount--;
-	    (*pulObjectCount)++;
-	    if (ulMaxObjectCount == 0)
-		break;
-	}
+        st_logf("FindObjects: %d\n", i);
+        state->find.next_object = i + 1;
+        if (attributes_match(soft_token.object.objs[i],
+                    state->find.attributes,
+                    state->find.num_attributes)) {
+            *phObject++ = soft_token.object.objs[i]->object_handle;
+            ulMaxObjectCount--;
+            (*pulObjectCount)++;
+            if (ulMaxObjectCount == 0) break;
+        }
     }
     return CKR_OK;
 }

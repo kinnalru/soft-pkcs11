@@ -9,6 +9,7 @@ endif(COMMAND cmake_policy)
 if(CMAKE_BUILD_TYPE STREQUAL Debug)
     add_definitions(-DDEBUG)
 endif()
+    add_definitions(-DDEBUG)
 
 add_definitions("-std=c++0x -std=c++11 -fpermissive")
 
