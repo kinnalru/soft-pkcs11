@@ -54,6 +54,26 @@ struct is_private_key : std::unary_function<const fs::directory_entry&, bool> {
     }
 };
 
+struct is_public_key : std::unary_function<const fs::directory_entry&, bool> {
+    bool operator() (const fs::directory_entry& d) {
+      std::ifstream infile(d.path().string());
+      std::string first_line;
+      std::getline(infile, first_line, '\n');
+      return (first_line.find("ssh-rsa") == 0)
+        || first_line == "-----BEGIN PUBLIC KEY-----"
+        || first_line == "-----BEGIN RSA PUBLIC KEY-----";        
+    }
+    
+    bool operator() (const std::string& data) {
+      std::stringstream infile(data);
+      std::string first_line;
+      std::getline(infile, first_line, '\n');
+      return (first_line.find("ssh-rsa") == 0)
+        ||first_line == "-----BEGIN PUBLIC KEY-----"
+        || first_line == "-----BEGIN RSA PUBLIC KEY-----";        
+    }
+};
+
 typedef boost::filter_iterator<std::function<bool(const fs::directory_entry&)>, fs::directory_iterator> objects_iterator;
 typedef boost::transform_iterator<to_object_id, objects_iterator> object_ids_iterator;
 
@@ -206,6 +226,9 @@ std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> soft_token_t::read_attributes(const st
 {
     if (is_private_key()(data)) {
         return private_key_attrs(file, data, id);
+    }
+    else if (is_public_key()(data)) {
+        return public_key_attrs(file, data, id);
     }
     
     return data_object_attrs(file, data, id);
