@@ -14,7 +14,7 @@ void st_logf(const char* fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
-    vdprintf(STDOUT_FILENO, fmt, ap);
+//     vdprintf(STDOUT_FILENO, fmt, ap);
     va_end(ap); 
 }
  

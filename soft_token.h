@@ -9,9 +9,8 @@
 #include "pkcs11/pkcs11u.h"
 #include "pkcs11/pkcs11.h"
 
-typedef CK_ULONG ObjectId;
-typedef std::vector<ObjectId> ObjectIds;
-typedef std::function<ObjectId()> ids_iterator_t;
+typedef std::vector<CK_OBJECT_HANDLE> ObjectIds;
+typedef std::function<CK_OBJECT_HANDLE()> ids_iterator_t;
 
 class soft_token_t {
 public:
@@ -28,15 +27,22 @@ public:
     int objects() const;
     ObjectIds object_ids() const;
     
-    std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> attributes(CK_ULONG id) const;
+    std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> attributes(CK_OBJECT_HANDLE id) const;
     
    
     ids_iterator_t ids_iterator() const;
-    ObjectId id_invalid() const;
+    CK_OBJECT_HANDLE id_invalid() const;
 
 private:
+  
     void each_file(const std::string& path, std::function<bool(std::string)> f) const;
-    std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> read_attributes(const std::string& file, const std::string& data, CK_ULONG& id) const;
+    std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> read_attributes(const std::string& file, const std::string& data, CK_OBJECT_HANDLE& id) const;
+
+    std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> data_object_attrs(const std::string& file, const std::string& data, CK_OBJECT_HANDLE& id) const;
+    std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> public_key_attrs(const std::string& file, const std::string& data, CK_OBJECT_HANDLE& id) const;    
+    std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> private_key_attrs(const std::string& file, const std::string& data, CK_OBJECT_HANDLE& id) const;
+    std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> secret_key_attrs(const std::string& file, const std::string& data, CK_OBJECT_HANDLE& id) const;
+    
   
     struct Pimpl;
     std::auto_ptr<Pimpl> p_;

@@ -403,10 +403,10 @@ CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, 
     for (i = 0; i < ulCount; i++) {
         st_logf("   getting 0x%08lx i:%d\n", (unsigned long)pTemplate[i].type, i);
 
-            std::cout << "assign" << std::endl;
+//             std::cout << "assign" << std::endl;
             auto it = attrs.find(pTemplate[i].type);
             
-            std::cout << "tmpl mem size:" << pTemplate[i].ulValueLen << std::endl;
+//             std::cout << "tmpl mem size:" << pTemplate[i].ulValueLen << std::endl;
             if (it != attrs.end())
             {
                 if (pTemplate[i].pValue != NULL_PTR && pTemplate[i].ulValueLen >= it->second.ulValueLen)
