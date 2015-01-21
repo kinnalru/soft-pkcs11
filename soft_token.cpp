@@ -238,7 +238,6 @@ void soft_token_t::each_file(const std::string& path, std::function<bool(std::st
         {
             if (fs::is_regular_file(dir_iter->status()))
             {
-                std::cerr << dir_iter->path() << std::endl;
                 if (f(dir_iter->path().c_str())) return;
             }
         }

@@ -20,6 +20,7 @@
 #include "pkcs11/pkcs11u.h"
 #include "pkcs11/pkcs11.h"
 
+#include "tools.h"
 #include "soft_token.h"
 
 
@@ -29,13 +30,7 @@ static void log(const std::string& str) {
     std::cout << str << std::endl;
 }
 
-static void st_logf(const char *fmt, ...)
-{
-    va_list ap;
-    va_start(ap, fmt);
-    vdprintf(STDOUT_FILENO, fmt, ap);
-    va_end(ap);
-}
+
 
 template <int ID>
 struct func_t {
@@ -292,81 +287,7 @@ CK_RV C_CloseSession(CK_SESSION_HANDLE hSession)
     return CKR_OK;
 }
 
-static void
-print_attributes(const CK_ATTRIBUTE *attributes,
-         CK_ULONG num_attributes)
-{
-    CK_ULONG i;
 
-    st_logf("find objects: attrs: %lu\n", (unsigned long)num_attributes);
-
-    for (i = 0; i < num_attributes; i++) {
-    st_logf("  type: ");
-    switch (attributes[i].type) {
-    case CKA_TOKEN: {
-        CK_BBOOL *ck_true;
-        if (attributes[i].ulValueLen != sizeof(CK_BBOOL)) {
-//         application_error("token attribute wrong length\n");
-        break;
-        }
-        ck_true = attributes[i].pValue;
-        st_logf("token: %s", *ck_true ? "TRUE" : "FALSE");
-        break;
-    }
-    case CKA_CLASS: {
-        CK_OBJECT_CLASS *klass;
-        if (attributes[i].ulValueLen != sizeof(CK_ULONG)) {
-//         application_error("class attribute wrong length\n");
-        break;
-        }
-        klass = attributes[i].pValue;
-        st_logf("class ");
-        switch (*klass) {
-        case CKO_CERTIFICATE:
-        st_logf("certificate");
-        break;
-        case CKO_PUBLIC_KEY:
-        st_logf("public key");
-        break;
-        case CKO_PRIVATE_KEY:
-        st_logf("private key");
-        break;
-        case CKO_SECRET_KEY:
-        st_logf("secret key");
-        break;
-        case CKO_DOMAIN_PARAMETERS:
-        st_logf("domain parameters");
-        break;
-        default:
-        st_logf("[class %lx]", (long unsigned)*klass);
-        break;
-        }
-        break;
-    }
-    case CKA_PRIVATE:
-        st_logf("private");
-        break;
-    case CKA_LABEL:
-        st_logf("label == %s", attributes[i].pValue);
-        break;
-    case CKA_APPLICATION:
-        st_logf("application");
-        break;
-    case CKA_VALUE:
-        st_logf("value");
-        break;
-    case CKA_ID:
-        st_logf("id");
-        break;
-    default:
-        st_logf("[unknown 0x%08lx]", (unsigned long)attributes[i].type);
-        break;
-    }
-    
-    st_logf(" SIZE: %d", attributes[i].ulValueLen);
-    st_logf("\n");
-    }
-}
 
 CK_RV C_FindObjectsInit(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, CK_ULONG ulCount)
 {
@@ -473,16 +394,19 @@ CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, 
 //         (unsigned long)HANDLE_OBJECT_ID(hObject));
 //     return ret;
 //     }
+    
+    st_logf(" input ");
+    print_attributes(pTemplate, ulCount);
 
     auto attrs = soft_token->attributes(hObject);
     
     for (i = 0; i < ulCount; i++) {
         st_logf("   getting 0x%08lx i:%d\n", (unsigned long)pTemplate[i].type, i);
 
-//             std::cout << "assign" << std::endl;
+            std::cout << "assign" << std::endl;
             auto it = attrs.find(pTemplate[i].type);
             
-//             std::cout << "tmpl mem size:" << pTemplate[i].ulValueLen << std::endl;
+            std::cout << "tmpl mem size:" << pTemplate[i].ulValueLen << std::endl;
             if (it != attrs.end())
             {
                 if (pTemplate[i].pValue != NULL_PTR && pTemplate[i].ulValueLen >= it->second.ulValueLen)
@@ -495,7 +419,7 @@ CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, 
             
             
             if (it == attrs.end()) {
-//                 st_logf("key type: 0x%08lx not found\n", (unsigned long)pTemplate[i].type);
+                st_logf("key type: 0x%08lx not found\n", (unsigned long)pTemplate[i].type);
                 pTemplate[i].ulValueLen = (CK_ULONG)-1;
             }
 
@@ -525,6 +449,7 @@ CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, 
 
     }
     
+    st_logf(" output ");
     print_attributes(pTemplate, ulCount);
     return CKR_OK;
 }

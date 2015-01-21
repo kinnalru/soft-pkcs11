@@ -225,72 +225,66 @@ print_attributes(const CK_ATTRIBUTE *attributes,
 {
     CK_ULONG i;
 
-    st_logf("find objects: attrs: %lu\n", (unsigned long)num_attributes);
+    st_logf("Print attributes: %lu\n", num_attributes);
 
     for (i = 0; i < num_attributes; i++) {
-	st_logf("  type: ");
         switch (attributes[i].type) {
         case CKA_TOKEN: {
-            CK_BBOOL *ck_true;
             if (attributes[i].ulValueLen != sizeof(CK_BBOOL)) {
-                application_error("token attribute wrong length\n");
+                st_logf("  * token attribute(d) wrong length\n", CKA_TOKEN);
                 break;
             }
-            ck_true = attributes[i].pValue;
-            st_logf("token: %s", *ck_true ? "TRUE" : "FALSE");
+            st_logf("  * type: <token> size: <%d> value: <%s>\n", attributes[i].ulValueLen, *((CK_BBOOL*)attributes[i].pValue) ? "TRUE" : "FALSE");
             break;
         }
         case CKA_CLASS: {
-            CK_OBJECT_CLASS *class;
+            
             if (attributes[i].ulValueLen != sizeof(CK_ULONG)) {
-                application_error("class attribute wrong length\n");
+                st_logf("  * token attribute(%d) wrong length\n", CKA_CLASS);
                 break;
             }
-            class = attributes[i].pValue;
-            st_logf("class ");
-            switch (*class) {
-                case CKO_CERTIFICATE:
-                st_logf("certificate");
+            CK_OBJECT_CLASS klass = *((CK_OBJECT_CLASS*)attributes[i].pValue);
+            switch (klass) {
+            case CKO_CERTIFICATE:
+                st_logf("  * type: <class> size: <%d> value: <%s>\n", attributes[i].ulValueLen, "certificate");
                 break;
-                case CKO_PUBLIC_KEY:
-                st_logf("public key");
+            case CKO_PUBLIC_KEY:
+                st_logf("  * type: <class> size: <%d> value: <%s>\n", attributes[i].ulValueLen, "public key");
                 break;
-                case CKO_PRIVATE_KEY:
-                st_logf("private key");
+            case CKO_PRIVATE_KEY:
+                st_logf("  * type: <class> size: <%d> value: <%s>\n", attributes[i].ulValueLen, "private key");
                 break;
-                case CKO_SECRET_KEY:
-                st_logf("secret key");
+            case CKO_SECRET_KEY:
+                st_logf("  * type: <class> size: <%d> value: <%s>\n", attributes[i].ulValueLen, "secret key");
                 break;
-                case CKO_DOMAIN_PARAMETERS:
-                st_logf("domain parameters");
+            case CKO_DOMAIN_PARAMETERS:
+                st_logf("  * type: <class> size: <%d> value: <%s>\n", attributes[i].ulValueLen, "domain parameters");
                 break;
-                default:
-                st_logf("[class %lx]", (long unsigned)*class);
+            default:
+                st_logf("  * type: <class> size: <%d> value: [class 0x%08lx]\n", attributes[i].ulValueLen, klass);
                 break;
             }
             break;
         }
         case CKA_PRIVATE:
-            st_logf("private");
+            st_logf("  * type: <private> size: <%d>\n", attributes[i].ulValueLen);
             break;
         case CKA_LABEL:
-            st_logf("label %s", attributes[i].pValue);
+            st_logf("  * type: <label> size: <%d> value: <%s>\n", attributes[i].ulValueLen, attributes[i].pValue);
             break;
         case CKA_APPLICATION:
-            st_logf("application");
+            st_logf("  * type: <application> size: <%d>\n", attributes[i].ulValueLen);
             break;
         case CKA_VALUE:
-            st_logf("value");
+            st_logf("  * type: <value> size: <%d>\n", attributes[i].ulValueLen);
             break;
         case CKA_ID:
-            st_logf("id");
+            st_logf("  * type: <id> size: <%d>\n", attributes[i].ulValueLen);
             break;
         default:
-            st_logf("[unknown 0x%08lx]", (unsigned long)attributes[i].type);
+            st_logf("  * type: <UNKNOWN> size: <%d> type: [0x%08lx]\n", attributes[i].ulValueLen, attributes[i].type);
             break;
-	}
-    st_logf(" SIZE: %d", attributes[i].ulValueLen);	
-	st_logf("\n");
+        }
     }
 }
 
@@ -1179,13 +1173,19 @@ C_GetAttributeValue(CK_SESSION_HANDLE hSession,
     CK_RV ret;
     int j;
 
+   
     st_logf("GetAttributeValue: %lx count: %d\n",
 	    (unsigned long)HANDLE_OBJECT_ID(hObject), ulCount);
+    
+    st_logf(" input ");
+    print_attributes(pTemplate, ulCount);
     
     if ((unsigned long)HANDLE_OBJECT_ID(hObject) != 2) return CKR_ARGUMENTS_BAD;
     
     VERIFY_SESSION_HANDLE(hSession, &state);
 
+    
+    
     if ((ret = object_handle_to_object(hObject, &obj)) != CKR_OK) {
         st_logf("object not found: %lx\n", (unsigned long)HANDLE_OBJECT_ID(hObject));
         return ret;
@@ -1219,6 +1219,7 @@ C_GetAttributeValue(CK_SESSION_HANDLE hSession,
 
     }
     
+    st_logf(" output ");
     print_attributes(pTemplate, ulCount);
     return CKR_OK;
 }

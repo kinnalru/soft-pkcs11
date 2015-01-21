@@ -24,8 +24,8 @@ include_directories(${Boost_INCLUDE_DIRS})
 #add_subdirectory(3rdparty//qtwebdav)
 
 set(HEADERS
-  soft_token.h
-  tools.h
+    soft_token.h
+    tools.h
 )
 
 set(SOURCES 
