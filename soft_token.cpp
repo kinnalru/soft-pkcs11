@@ -390,13 +390,6 @@ std::map< CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE > soft_token_t::secret_key_attrs(const
 
 
 
-
-
-
-
- 
-
-
 bool soft_token_t::logged_in() const
 {
     return false;

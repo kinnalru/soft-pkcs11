@@ -300,7 +300,7 @@ CK_RV C_FindObjectsInit(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, 
         return CKR_SESSION_HANDLE_INVALID;
     }
     
-
+    print_attributes(pTemplate, ulCount);
     
 //     VERIFY_SESSION_HANDLE(hSession, &state);
 
@@ -309,6 +309,7 @@ CK_RV C_FindObjectsInit(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, 
 //         find_object_final(state);
 //     }
     if (ulCount) {
+        session->ids_iterator = soft_token->ids_iterator();
 //         CK_ULONG i;
 //         size_t len;
 
@@ -372,7 +373,6 @@ CK_RV C_FindObjects(CK_SESSION_HANDLE hSession,
 CK_RV C_FindObjectsFinal(CK_SESSION_HANDLE hSession)
 {
     st_logf("FindObjectsFinal\n");
-    session_t::destroy(hSession);
     return CKR_OK;
 }
 
@@ -386,14 +386,10 @@ CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, 
 
     st_logf("** GetAttributeValue: %lu ulCount: %d\n", hObject, ulCount);
     
-    
-//     VERIFY_SESSION_HANDLE(hSession, &state);
-
-//     if ((ret = object_handle_to_object(hObject, &obj)) != CKR_OK) {
-//     st_logf("object not found: %lx\n",
-//         (unsigned long)HANDLE_OBJECT_ID(hObject));
-//     return ret;
-//     }
+    auto session = session_t::find(hSession);
+    if (session == session_t::end()) {
+        return CKR_SESSION_HANDLE_INVALID;
+    }
     
     st_logf(" input ");
     print_attributes(pTemplate, ulCount);
@@ -422,31 +418,6 @@ CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, 
                 st_logf("key type: 0x%08lx not found\n", (unsigned long)pTemplate[i].type);
                 pTemplate[i].ulValueLen = (CK_ULONG)-1;
             }
-
-
-//         
-        
-        
-//         for (j = 0; j < obj->num_attributes; j++) {
-//             if (obj->attrs[j].secret) {
-//             pTemplate[i].ulValueLen = (CK_ULONG)-1;
-//             break;
-//             }
-//             if (pTemplate[i].type == obj->attrs[j].attribute.type) {
-//             if (pTemplate[i].pValue != NULL_PTR && obj->attrs[j].secret == 0) {
-//                 if (pTemplate[i].ulValueLen >= obj->attrs[j].attribute.ulValueLen)
-//                 memcpy(pTemplate[i].pValue, obj->attrs[j].attribute.pValue,
-//                     obj->attrs[j].attribute.ulValueLen);
-//             }
-//             pTemplate[i].ulValueLen = obj->attrs[j].attribute.ulValueLen;
-//             break;
-//             }
-//         }
-//         if (j == obj->num_attributes) {
-//             st_logf("key type: 0x%08lx not found\n", (unsigned long)pTemplate[i].type);
-//             pTemplate[i].ulValueLen = (CK_ULONG)-1;
-//         }
-
     }
     
     st_logf(" output ");
