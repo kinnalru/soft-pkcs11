@@ -11,23 +11,56 @@
 #include <fstream>
 #include <functional>
 
+#include <boost/iterator/filter_iterator.hpp>
+#include <boost/iterator/transform_iterator.hpp>
+
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/ini_parser.hpp>
 #include <boost/filesystem.hpp>
 
 #include "soft_token.h"
 
-
-
 namespace fs = boost::filesystem;
+
+struct is_object {
+    bool operator() (const fs::directory_entry& d) const {
+        return fs::is_regular_file(d.status());
+    }
+};
+
+struct to_object_id {
+    ObjectId operator() (const fs::directory_entry& d) const {
+        return static_cast<ObjectId>(hash(d.path().filename().c_str()));
+    }
+private:
+    std::hash<std::string> hash;
+};
+
+typedef boost::filter_iterator<is_object, fs::directory_iterator> objects_iterator;
+typedef boost::transform_iterator<to_object_id, objects_iterator> object_ids_iterator;
+
 
 struct soft_token_t::Pimpl {
   
     Pimpl() {
       config.put("path", "default");
     }
+    
+    objects_iterator objects_begin() {
+        if (fs::exists(path) && fs::is_directory(path)) {
+            return objects_iterator(fs::directory_iterator(path));
+        }    
+        
+        return objects_end();
+    };
+    
+    objects_iterator objects_end() {
+        return objects_iterator(fs::directory_iterator());
+    }
+    
   
     boost::property_tree::ptree config;
+    std::string path;
 };
 
 int read_password (char *buf, int size, int rwflag, void *userdata) {
@@ -53,6 +86,8 @@ soft_token_t::soft_token_t(const std::string& rcfile)
       boost::property_tree::ini_parser::read_ini(rcfile, p_->config);
     }
     catch (...) {}
+    
+    p_->path = p_->config.get<std::string>("path");
  
 //     each_file(p_->config.get<std::string>("path"), [](std::string s) {
 //       
@@ -91,9 +126,9 @@ int soft_token_t::objects() const
     return result;
 }
 
-std::vector<CK_ULONG> soft_token_t::object_ids() const
+ObjectIds soft_token_t::object_ids() const
 {
-    std::vector<CK_ULONG> result;
+    ObjectIds result;
     std::hash<std::string> hash;
     each_file(p_->config.get<std::string>("path"), [&result, &hash] (std::string s) {
         if (check_file_is_private_key(s)) {
@@ -186,7 +221,7 @@ std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> soft_token_t::read_attributes(const st
 
 }
 
-
+ 
 
 
 bool soft_token_t::logged_in() const
@@ -209,6 +244,29 @@ void soft_token_t::each_file(const std::string& path, std::function<bool(std::st
         }
     }
 }
+
+
+ids_iterator_t soft_token_t::ids_iterator() const
+{
+    auto it = object_ids_iterator(p_->objects_begin());
+    auto end = object_ids_iterator(p_->objects_end());
+    
+    return ids_iterator_t([it, end] () mutable {
+        if (it != end) {
+            return *(it++);
+        }
+        else {
+            return static_cast<ObjectId>(-1);  
+        }
+    });
+}
+
+ObjectId soft_token_t::id_invalid() const
+{
+    return static_cast<ObjectId>(-1);  
+}
+
+
 
 
 

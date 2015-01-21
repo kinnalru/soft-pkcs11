@@ -9,6 +9,10 @@
 #include "pkcs11/pkcs11u.h"
 #include "pkcs11/pkcs11.h"
 
+typedef CK_ULONG ObjectId;
+typedef std::vector<ObjectId> ObjectIds;
+typedef std::function<ObjectId()> ids_iterator_t;
+
 class soft_token_t {
 public:
   
@@ -22,10 +26,13 @@ public:
     }
 
     int objects() const;
-    std::vector<CK_ULONG> object_ids() const;
+    ObjectIds object_ids() const;
     
     std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> attributes(CK_ULONG id) const;
     
+   
+    ids_iterator_t ids_iterator() const;
+    ObjectId id_invalid() const;
 
 private:
     void each_file(const std::string& path, std::function<bool(std::string)> f) const;

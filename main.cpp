@@ -48,35 +48,46 @@ struct func_t {
 
 struct session_t {
     
-    session_t() : id(++_id) {}
-    session_t(int id) : id(id) {}
+    static std::list<session_t>::iterator create() {
+        return _sessions.insert(_sessions.end(), session_t(++_id));
+    };
     
-    bool operator==(const session_t& other) const {
-        return id == other.id;
+    static void destroy(CK_SESSION_HANDLE id) {
+        auto it = find(id);
+        if (it != _sessions.end()) {
+            _sessions.erase(it);
+        }
     }
     
-    std::vector<CK_ULONG> objects;
-    std::vector<CK_ULONG>::iterator current;
-    const int id;
+    static std::list<session_t>::iterator find(CK_SESSION_HANDLE id) {
+        return std::find(_sessions.begin(), _sessions.end(), id);
+    };
+    
+    static std::list<session_t>::iterator end() {
+        return _sessions.end();
+    }
+
+    operator CK_SESSION_HANDLE() const {return id;}
+    
+    const CK_SESSION_HANDLE id;
+    ids_iterator_t ids_iterator;
+    
 private:
-    static int _id;
+    session_t(CK_SESSION_HANDLE id) : id(id) {}
+
+private:
+    static CK_SESSION_HANDLE _id;
+    static std::list<session_t> _sessions;
 };
 
 
-int session_t::_id = 0;
+CK_SESSION_HANDLE session_t::_id = 0;
+std::list<session_t> session_t::_sessions = std::list<session_t>();
 
-std::list<session_t> sessions;
+
 
 extern "C" {
   
-// static CK_RV func_not_supported(void)
-// {
-//     log("function not supported");
-//     return CKR_FUNCTION_NOT_SUPPORTED;
-// }
-
-
-
   
 CK_RV C_Initialize(CK_VOID_PTR a)
 {
@@ -267,25 +278,9 @@ CK_RV C_OpenSession(CK_SLOT_ID slotID,
     int i;
 
     st_logf("OpenSession: slot: %d\n", (int)slotID);
-
-//     if (soft_token.open_sessions == MAX_NUM_SESSION) return CKR_SESSION_COUNT;
-
-//     soft_token.application = pApplication;
-//     soft_token.notify = Notify;
-
-//     for (i = 0; i < MAX_NUM_SESSION; i++)
-//         if (soft_token.state[i].session_handle == CK_INVALID_HANDLE) break;
-//         
-//     if (i == MAX_NUM_SESSION)
-//     abort();
-
-//     soft_token.open_sessions++;
-
-//     soft_token.state[i].session_handle =
-//     (CK_SESSION_HANDLE)(random() & 0xfffff);
     
-    auto it = sessions.insert(sessions.end(), session_t());
-    *phSession = it->id;
+    auto session = session_t::create();
+    *phSession = *session;
 
     return CKR_OK;
 }
@@ -293,7 +288,7 @@ CK_RV C_OpenSession(CK_SLOT_ID slotID,
 CK_RV C_CloseSession(CK_SESSION_HANDLE hSession)
 {
     st_logf("CloseSession\n");
-
+    session_t::destroy(hSession);
     return CKR_OK;
 }
 
@@ -379,6 +374,13 @@ CK_RV C_FindObjectsInit(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, 
 
     st_logf("FindObjectsInit: Session: %d ulCount: %d\n", hSession, ulCount);
 
+    auto session = session_t::find(hSession);
+    if (session == session_t::end()) {
+        return CKR_SESSION_HANDLE_INVALID;
+    }
+    
+
+    
 //     VERIFY_SESSION_HANDLE(hSession, &state);
 
 //     if (state->find.next_object != -1) {
@@ -395,11 +397,11 @@ CK_RV C_FindObjectsInit(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, 
 //             calloc(1, ulCount * sizeof(state->find.attributes[0]));
 //         if (state->find.attributes == NULL)
 //             return CKR_DEVICE_MEMORY;
-//         for (i = 0; i < ulCount; i++) {
+//         for (i = 0; i < ulCount; i++) {CKR_DEVICE_MEMORY
 //             state->find.attributes[i].pValue = 
 //             malloc(pTemplate[i].ulValueLen);
 //             if (state->find.attributes[i].pValue == NULL) {
-//             find_object_final(state);
+//             find_object_final(state); 
 //             return CKR_DEVICE_MEMORY;
 //             }
 //             memcpy(state->find.attributes[i].pValue,
@@ -411,13 +413,7 @@ CK_RV C_FindObjectsInit(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, 
 //         state->find.next_object = 0;
     } else {
         st_logf(" == find all objects\n");
-//         state->find.attributes = NULL;
-//         state->find.num_attributes = 0;
-//         state->find.next_object = 0;
-
-        auto session = std::find(sessions.begin(), sessions.end(), hSession);
-        session->objects = soft_token->object_ids();
-        session->current = session->objects.begin();
+        session->ids_iterator = soft_token->ids_iterator();
     }
 
     return CKR_OK;
@@ -434,13 +430,15 @@ CK_RV C_FindObjects(CK_SESSION_HANDLE hSession,
         return CKR_ARGUMENTS_BAD;
     }
     
-    auto session = std::find(sessions.begin(), sessions.end(), hSession);
+    auto session = session_t::find(hSession);
+    if (session == session_t::end()) {
+        return CKR_SESSION_HANDLE_INVALID;
+    }
     
     *pulObjectCount = 0;
-    
-    for(; session->current != session->objects.end(); ++session->current) {
-        std::cout << " == fille object " << *session->current << std::endl;
-        *phObject++ = *session->current;
+
+    for(auto id = session->ids_iterator(); id != soft_token->id_invalid(); id = session->ids_iterator()) {
+        *phObject++ = id;
         (*pulObjectCount)++;
         ulMaxObjectCount--;
         if (ulMaxObjectCount == 0) break;        
@@ -453,7 +451,7 @@ CK_RV C_FindObjects(CK_SESSION_HANDLE hSession,
 CK_RV C_FindObjectsFinal(CK_SESSION_HANDLE hSession)
 {
     st_logf("FindObjectsFinal\n");
-    sessions.remove(hSession);
+    session_t::destroy(hSession);
     return CKR_OK;
 }
 
@@ -484,8 +482,7 @@ CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, 
 //             std::cout << "assign" << std::endl;
             auto it = attrs.find(pTemplate[i].type);
             
-            if (pTemplate[i].type == CKA_LABEL) std::cout << " !!! LABNEL:" << std::string(it->second.pValue) << std::endl; 
-            std::cout << "tmpl mem size:" << pTemplate[i].ulValueLen << std::endl;
+//             std::cout << "tmpl mem size:" << pTemplate[i].ulValueLen << std::endl;
             if (it != attrs.end())
             {
                 if (pTemplate[i].pValue != NULL_PTR && pTemplate[i].ulValueLen >= it->second.ulValueLen)
@@ -498,7 +495,7 @@ CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, 
             
             
             if (it == attrs.end()) {
-                st_logf("key type: 0x%08lx not found\n", (unsigned long)pTemplate[i].type);
+//                 st_logf("key type: 0x%08lx not found\n", (unsigned long)pTemplate[i].type);
                 pTemplate[i].ulValueLen = (CK_ULONG)-1;
             }
 
