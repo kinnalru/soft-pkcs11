@@ -11,6 +11,7 @@
 #include <fstream>
 #include <functional>
 
+#include <boost/bind.hpp>
 #include <boost/iterator/filter_iterator.hpp>
 #include <boost/iterator/transform_iterator.hpp>
 
@@ -23,6 +24,12 @@
 
 
 namespace fs = boost::filesystem;
+
+
+Attributes data_object_attrs(const std::string& file, const std::string& data, CK_OBJECT_HANDLE id);
+Attributes public_key_attrs(const std::string& file, const std::string& data, CK_OBJECT_HANDLE id);    
+Attributes private_key_attrs(const std::string& file, const std::string& data, CK_OBJECT_HANDLE id);
+Attributes secret_key_attrs(const std::string& file, const std::string& data, CK_OBJECT_HANDLE id);
 
 struct is_object : std::unary_function<const fs::directory_entry&, bool> {
     bool operator() (const fs::directory_entry& d) const {
@@ -37,6 +44,7 @@ struct to_object_id : std::unary_function<const fs::directory_entry&, CK_OBJECT_
 private:
     std::hash<std::string> hash;
 };
+
 
 struct is_private_key : std::unary_function<const fs::directory_entry&, bool> {
     bool operator() (const fs::directory_entry& d) {
@@ -74,8 +82,31 @@ struct is_public_key : std::unary_function<const fs::directory_entry&, bool> {
     }
 };
 
-typedef boost::filter_iterator<std::function<bool(const fs::directory_entry&)>, fs::directory_iterator> objects_iterator;
-typedef boost::transform_iterator<to_object_id, objects_iterator> object_ids_iterator;
+struct to_attributes : std::unary_function<const fs::directory_entry&, Objects::value_type> {
+    Objects::value_type operator() (const fs::directory_entry& d) const {
+        const auto id = to_object_id()(d);
+        std::ifstream t(d.path().string());
+        const std::string data((std::istreambuf_iterator<char>(t)), std::istreambuf_iterator<char>());
+        
+        Attributes attrs;
+        
+        if (is_private_key()(data)) {
+            attrs = private_key_attrs(d.path().filename().string(), data, id);
+        }
+        else if (is_public_key()(data)) {
+            attrs = public_key_attrs(d.path().filename().string(), data, id);
+        } 
+        else {
+            attrs = data_object_attrs(d.path().filename().string(), data, id);    
+        }
+        
+        return std::make_pair(id, attrs);
+    }
+};
+
+
+typedef boost::filter_iterator<std::function<bool(const fs::directory_entry&)>, fs::directory_iterator> files_iterator;
+typedef boost::transform_iterator<to_object_id, files_iterator> object_ids_iterator;
 
 
 struct soft_token_t::Pimpl {
@@ -84,34 +115,49 @@ struct soft_token_t::Pimpl {
       config.put("path", "default");
     }
     
-    objects_iterator objects_begin() const {
+    files_iterator files_begin() const {
         if (fs::exists(path) && fs::is_directory(path)) {
-            return objects_iterator(is_object(), fs::directory_iterator(path));
+            return files_iterator(is_object(), fs::directory_iterator(path));
         }    
         
-        return objects_end();
+        return files_end();
     };
     
-    objects_iterator objects_end() const {
-        return objects_iterator(fs::directory_iterator());
+    files_iterator files_end() const {
+        return files_iterator(fs::directory_iterator());
     }
     
-    objects_iterator find(std::function<bool(const fs::directory_entry&)> pred) const {
-        return std::find_if(objects_begin(), objects_end(), pred);
-    }
     
-    template<typename Pred>
-    boost::filter_iterator<Pred, objects_iterator> filter_iterator(Pred pred) const {
-        return boost::filter_iterator<Pred, objects_iterator>(pred, objects_begin(), objects_end());
+    
+    Objects::const_iterator find(std::function<bool(const Objects::value_type&)> pred) const {
+        return std::find_if(objects.begin(), objects.end(), pred);
     }
     
     template<typename Pred>
-    boost::filter_iterator<Pred, objects_iterator> filter_end(Pred pred) const {
-        return boost::filter_iterator<Pred, objects_iterator>(pred, objects_end(), objects_end());
+    boost::filter_iterator<Pred, Objects::const_iterator> filter_iterator(Pred pred) const {
+        return boost::filter_iterator<Pred, Objects::const_iterator>(pred, objects.begin(), objects.end());
     }
+    
+    template<typename Pred>
+    boost::filter_iterator<Pred, Objects::const_iterator> filter_end(Pred pred) const {
+        return boost::filter_iterator<Pred, Objects::const_iterator>(pred, objects.end(), objects.end());
+    }
+
+    template<typename Trans>
+    boost::transform_iterator<Trans, Objects::const_iterator> trans_iterator(Trans trans) const {
+        return boost::transform_iterator<Trans, Objects::const_iterator>(objects.begin(), trans);
+    }
+    
+    template<typename Trans>
+    boost::transform_iterator<Trans, Objects::const_iterator> trans_end(Trans trans) const {
+        return boost::transform_iterator<Trans, Objects::const_iterator>(objects.end(), trans);
+    }
+
+    std::vector<int> vi;
   
     boost::property_tree::ptree config;
     std::string path;
+    Objects objects;
 };
 
 int read_password (char *buf, int size, int rwflag, void *userdata) {
@@ -138,72 +184,70 @@ soft_token_t::soft_token_t(const std::string& rcfile)
     catch (...) {}
     
     p_->path = p_->config.get<std::string>("path");
-    
+
     st_logf("Config file: %s\n", rcfile.c_str());
     st_logf("Path : %s\n", p_->path.c_str());
-    st_logf("Finded obejcts:\n");
-    for(auto it = p_->objects_begin(); it != p_->objects_end(); ++it ) {
-        st_logf(" * %s\n", it->path().filename().c_str());
+    
+    const auto end = p_->files_end();
+    const to_attributes convert;
+    for(auto it = p_->files_begin(); it != end; ++it ) {
+        st_logf("Finded obejcts:\n");
+        p_->objects.insert(convert(*it));
     }
     
-
-//     each_file(p_->config.get<std::string>("path"), [](std::string s) {
-//       
-//         std::cerr << s << " Is key: " << check_file_is_private_key(s) << std::endl;;
-//         return;
-//       
-//         FILE* f = fopen(s.c_str(), "r");
-//         
-//         if (f == NULL) {
-//             std::cerr << "Error open file:" << s << std::endl;
-//         }
-//         
-//         EVP_PKEY *key = PEM_read_PrivateKey(f, NULL, read_password, NULL);
-//         
-//         if (key == NULL) {
-//             std::cerr << "failed to read key: " << s.c_str() << " Err:"<< ERR_error_string(ERR_get_error(), NULL);
-//         }
-//     });
 }
 
 soft_token_t::~soft_token_t()
 {
     std::cerr << "DESTRUCTOR 1" << std::endl;
-//     p_.reset();
+    p_.reset();
     std::cerr << "DESTRUCTOR 2" << std::endl;
 }
 
-int soft_token_t::objects() const
+bool soft_token_t::logged_in() const
 {
-    int result = 0;
-    each_file(p_->config.get<std::string>("path"), [&result] (std::string s) {
-        if (check_file_is_private_key(s)) ++result;
-              
-        return false;
-    });
-    return result;
+    return false;
+
 }
 
-ObjectIds soft_token_t::object_ids() const
+Handles soft_token_t::handles() const
 {
-    return ObjectIds(object_ids_iterator(p_->objects_begin()), object_ids_iterator(p_->objects_end()));
+    return Handles(
+        p_->trans_iterator(boost::bind(&Objects::value_type::first,_1)),
+        p_->trans_end(boost::bind(&Objects::value_type::first,_1))
+    );
 }
 
-std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> soft_token_t::attributes(CK_OBJECT_HANDLE id) const
+handle_iterator_t soft_token_t::handles_iterator() const
 {
-    auto it = p_->find([id ](const fs::directory_entry& d) {
-        return to_object_id()(d) == id;
+    auto it = p_->trans_iterator(boost::bind(&Objects::value_type::first,_1));
+    auto end = p_->trans_end(boost::bind(&Objects::value_type::first,_1));
+    
+    return handle_iterator_t([it, end] () mutable {
+        if (it != end) {
+            return *(it++);
+        }
+        else {
+            return static_cast<CK_OBJECT_HANDLE>(-1);  
+        }
     });
-  
-    if (it != p_->objects_end()) {
-        std::ifstream t(it->path().string());
-        std::string str((std::istreambuf_iterator<char>(t)), std::istreambuf_iterator<char>());
-        return read_attributes(it->path().filename().string(), str, id);
+}
+
+CK_OBJECT_HANDLE soft_token_t::handle_invalid() const
+{
+    return static_cast<CK_OBJECT_HANDLE>(-1);  
+}
+
+
+Attributes soft_token_t::attributes(CK_OBJECT_HANDLE id) const
+{
+    auto it = p_->objects.find(id);
+    
+    if (it != p_->objects.end()) {
+        return it->second;
     }
     
-    st_logf("Object with id: %lu not found", id);
-    
-    return std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE>();
+    return Attributes();
 }
 
  
@@ -222,22 +266,11 @@ inline std::pair<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> create_object(CK_ATTRIBUTE_TYP
     return std::make_pair(type, attr);
 }
 
-std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> soft_token_t::read_attributes(const std::string& file, const std::string& data, CK_OBJECT_HANDLE& id) const
-{
-    if (is_private_key()(data)) {
-        return private_key_attrs(file, data, id);
-    }
-    else if (is_public_key()(data)) {
-        return public_key_attrs(file, data, id);
-    }
-    
-    return data_object_attrs(file, data, id);
-}
 
 const CK_BBOOL bool_true = CK_TRUE;
 const CK_BBOOL bool_false = CK_FALSE;
 
-std::map< CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE > soft_token_t::data_object_attrs(const std::string& file, const std::string& data, CK_OBJECT_HANDLE& id) const
+Attributes data_object_attrs(const std::string& file, const std::string& data, CK_OBJECT_HANDLE id)
 {
     const CK_OBJECT_CLASS klass = CKO_DATA;
     const CK_FLAGS flags = 0;
@@ -255,7 +288,7 @@ std::map< CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE > soft_token_t::data_object_attrs(cons
     return attributes;
 }
 
-std::map< CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE > soft_token_t::public_key_attrs(const std::string& file, const std::string& data, CK_OBJECT_HANDLE& id) const
+Attributes public_key_attrs(const std::string& file, const std::string& data, CK_OBJECT_HANDLE id)
 {
     const CK_OBJECT_CLASS klass = CKO_PUBLIC_KEY;
     const CK_MECHANISM_TYPE mech_type = CKM_RSA_X_509;
@@ -294,7 +327,7 @@ std::map< CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE > soft_token_t::public_key_attrs(const
     return attributes;    
 }
 
-std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> soft_token_t::private_key_attrs(const std::string& file, const std::string& data, CK_OBJECT_HANDLE& id) const
+Attributes private_key_attrs(const std::string& file, const std::string& data, CK_OBJECT_HANDLE id)
 {
     const CK_OBJECT_CLASS klass = CKO_PRIVATE_KEY;
     const CK_MECHANISM_TYPE mech_type = CKM_RSA_X_509;
@@ -339,7 +372,7 @@ std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> soft_token_t::private_key_attrs(const 
     return attributes;
 }
 
-std::map< CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE > soft_token_t::secret_key_attrs(const std::string& file, const std::string& data, CK_OBJECT_HANDLE& id) const
+Attributes secret_key_attrs(const std::string& file, const std::string& data, CK_OBJECT_HANDLE id)
 {
     const CK_OBJECT_CLASS klass = CKO_SECRET_KEY;
     const CK_MECHANISM_TYPE mech_type = CKM_RSA_X_509;
@@ -390,38 +423,7 @@ std::map< CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE > soft_token_t::secret_key_attrs(const
 
 
 
-bool soft_token_t::logged_in() const
-{
-    return false;
-}
 
-void soft_token_t::each_file(const std::string& path, std::function<bool(std::string)> f) const
-{
-    for(auto it = p_->objects_begin(); it != p_->objects_end(); ++it) {
-        if (f(it->path().string())) return;
-    }
-}
-
-
-ids_iterator_t soft_token_t::ids_iterator() const
-{
-    auto it = object_ids_iterator(p_->objects_begin());
-    auto end = object_ids_iterator(p_->objects_end());
-    
-    return ids_iterator_t([it, end] () mutable {
-        if (it != end) {
-            return *(it++);
-        }
-        else {
-            return static_cast<CK_OBJECT_HANDLE>(-1);  
-        }
-    });
-}
-
-CK_OBJECT_HANDLE soft_token_t::id_invalid() const
-{
-    return static_cast<CK_OBJECT_HANDLE>(-1);  
-}
 
 
 

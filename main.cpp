@@ -61,11 +61,13 @@ struct session_t {
     static std::list<session_t>::iterator end() {
         return _sessions.end();
     }
+    
+    static std::list<session_t>::size_type count() {return _sessions.size();}
 
     operator CK_SESSION_HANDLE() const {return id;}
     
     const CK_SESSION_HANDLE id;
-    ids_iterator_t ids_iterator;
+    handle_iterator_t objects_iterator;
     
 private:
     session_t(CK_SESSION_HANDLE id) : id(id) {}
@@ -219,9 +221,9 @@ CK_RV C_GetTokenInfo(CK_SLOT_ID slotID, CK_TOKEN_INFO_PTR pInfo)
         pInfo->flags |= CKF_LOGIN_REQUIRED;
 
     pInfo->ulMaxSessionCount = 5;
-    pInfo->ulSessionCount = soft_token->open_sessions();
+    pInfo->ulSessionCount = session_t::count();
     pInfo->ulMaxRwSessionCount = 5;
-    pInfo->ulRwSessionCount = soft_token->open_sessions();
+    pInfo->ulRwSessionCount = session_t::count();
     pInfo->ulMaxPinLen = 1024;
     pInfo->ulMinPinLen = 0;
     pInfo->ulTotalPublicMemory = 4711;
@@ -309,7 +311,7 @@ CK_RV C_FindObjectsInit(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, 
 //         find_object_final(state);
 //     }
     if (ulCount) {
-        session->ids_iterator = soft_token->ids_iterator();
+        session->objects_iterator = soft_token->handles_iterator();
 //         CK_ULONG i;
 //         size_t len;
 
@@ -335,7 +337,7 @@ CK_RV C_FindObjectsInit(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, 
 //         state->find.next_object = 0;
     } else {
         st_logf(" == find all objects\n");
-        session->ids_iterator = soft_token->ids_iterator();
+        session->objects_iterator = soft_token->handles_iterator();
     }
 
     return CKR_OK;
@@ -359,7 +361,7 @@ CK_RV C_FindObjects(CK_SESSION_HANDLE hSession,
     
     *pulObjectCount = 0;
 
-    for(auto id = session->ids_iterator(); id != soft_token->id_invalid(); id = session->ids_iterator()) {
+    for(auto id = session->objects_iterator(); id != soft_token->handle_invalid(); id = session->objects_iterator()) {
         *phObject++ = id;
         (*pulObjectCount)++;
         ulMaxObjectCount--;
@@ -384,20 +386,20 @@ CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, 
     CK_RV ret;
     int j;
 
-    st_logf("** GetAttributeValue: %lu ulCount: %d\n", hObject, ulCount);
+//     st_logf("** GetAttributeValue: %lu ulCount: %d\n", hObject, ulCount);
     
     auto session = session_t::find(hSession);
     if (session == session_t::end()) {
         return CKR_SESSION_HANDLE_INVALID;
     }
     
-    st_logf(" input ");
-    print_attributes(pTemplate, ulCount);
+//     st_logf(" input ");
+//     print_attributes(pTemplate, ulCount);
 
     auto attrs = soft_token->attributes(hObject);
     
     for (i = 0; i < ulCount; i++) {
-        st_logf("   getting 0x%08lx i:%d\n", (unsigned long)pTemplate[i].type, i);
+//         st_logf("   getting 0x%08lx i:%d\n", (unsigned long)pTemplate[i].type, i);
 
 //             std::cout << "assign" << std::endl;
             auto it = attrs.find(pTemplate[i].type);
@@ -415,13 +417,13 @@ CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, 
             
             
             if (it == attrs.end()) {
-                st_logf("key type: 0x%08lx not found\n", (unsigned long)pTemplate[i].type);
+//                 st_logf("key type: 0x%08lx not found\n", (unsigned long)pTemplate[i].type);
                 pTemplate[i].ulValueLen = (CK_ULONG)-1;
             }
     }
     
-    st_logf(" output ");
-    print_attributes(pTemplate, ulCount);
+//     st_logf(" output ");
+//     print_attributes(pTemplate, ulCount);
     return CKR_OK;
 }
 
