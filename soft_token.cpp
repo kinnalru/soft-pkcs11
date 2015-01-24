@@ -143,14 +143,24 @@ struct soft_token_t::Pimpl {
         return boost::filter_iterator<Pred, Objects::const_iterator>(pred, objects.end(), objects.end());
     }
 
-    template<typename Trans>
-    boost::transform_iterator<Trans, Objects::const_iterator> trans_iterator(Trans trans) const {
-        return boost::transform_iterator<Trans, Objects::const_iterator>(objects.begin(), trans);
+    template<typename Trans, typename It = Objects::const_iterator>
+    boost::transform_iterator<Trans, It> trans_iterator(Trans trans, It* b = NULL) const {
+        auto tmp = objects.begin();
+        if (b == NULL) {
+            b = reinterpret_cast<It*>(&tmp); //HACK
+        }
+        
+        return boost::transform_iterator<Trans, It>(*b, trans);
     }
     
-    template<typename Trans>
-    boost::transform_iterator<Trans, Objects::const_iterator> trans_end(Trans trans) const {
-        return boost::transform_iterator<Trans, Objects::const_iterator>(objects.end(), trans);
+    template<typename Trans, typename It = Objects::const_iterator>
+    boost::transform_iterator<Trans, It> trans_end(Trans trans, It* e = NULL) const {
+        auto tmp = objects.end();
+        if (e == NULL) {
+            e = reinterpret_cast<It*>(&tmp); //HACK
+        }
+        
+        return boost::transform_iterator<Trans, It>(*e, trans);
     }
 
     std::vector<int> vi;
@@ -233,6 +243,49 @@ handle_iterator_t soft_token_t::handles_iterator() const
     });
 }
 
+struct find_by_attrs : std::unary_function<const Objects::value_type, bool> {
+    find_by_attrs(const Attributes& a) : attrs(a) {}
+    
+    bool operator()(const Objects::value_type object_pair) const {
+        for (auto it = attrs.begin(); it != attrs.end(); ++it) {
+            const Attributes& object_attrs = object_pair.second;
+            
+            auto fnd = object_attrs.find(it->first);
+            if (fnd != object_attrs.end()) {
+                if (fnd->second != it->second) {
+                    return false;
+                }
+            }
+            else {
+                return false;
+            }
+        }
+        
+        return true;
+    };
+    
+private:
+    const Attributes attrs;
+};
+
+handle_iterator_t soft_token_t::find_handles_iterator(const Attributes& attrs) const
+{
+    auto finded_it = p_->filter_iterator(find_by_attrs(attrs));
+    auto finded_end = p_->filter_end(find_by_attrs(attrs));
+    
+    auto it = p_->trans_iterator(boost::bind(&Objects::value_type::first,_1), &finded_it);
+    auto end = p_->trans_end(boost::bind(&Objects::value_type::first,_1), &finded_end);
+    
+    return handle_iterator_t([it, end] () mutable {
+        if (it != end) {
+            return *(it++);
+        }
+        else {
+            return static_cast<CK_OBJECT_HANDLE>(-1);  
+        }
+    });
+}
+
 CK_OBJECT_HANDLE soft_token_t::handle_invalid() const
 {
     return static_cast<CK_OBJECT_HANDLE>(-1);  
@@ -250,20 +303,19 @@ Attributes soft_token_t::attributes(CK_OBJECT_HANDLE id) const
     return Attributes();
 }
 
- 
-template <typename T>
-inline std::pair<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> create_object(CK_ATTRIBUTE_TYPE type, const T& object) {
-    CK_ATTRIBUTE attr = {type, malloc(sizeof(T)), sizeof(T)}; 
-    if (!attr.pValue) throw std::bad_alloc();
-    memcpy(attr.pValue, &object, sizeof(T));
-    return std::make_pair(type, attr);
-}
-
-inline std::pair<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> create_object(CK_ATTRIBUTE_TYPE type, const std::string& string) {
-    CK_ATTRIBUTE attr = {type, malloc(string.size() + 1), string.size() + 1}; 
-    if (!attr.pValue) throw std::bad_alloc();
-    memcpy(attr.pValue, string.c_str(), string.size() + 1);
-    return std::make_pair(type, attr);
+std::string soft_token_t::read(CK_OBJECT_HANDLE id) const
+{
+    to_object_id conv;
+    auto it = std::find_if(p_->files_begin(), p_->files_end(), [&conv, id](const fs::directory_entry& d) {
+        return conv(d) == id;
+    });
+    
+    if (it != p_->files_end()) {
+        std::ifstream t(it->path().string());
+        return std::string((std::istreambuf_iterator<char>(t)), std::istreambuf_iterator<char>());
+    }
+    
+    return std::string();
 }
 
 
@@ -275,14 +327,17 @@ Attributes data_object_attrs(const std::string& file, const std::string& data, C
     const CK_OBJECT_CLASS klass = CKO_DATA;
     const CK_FLAGS flags = 0;
     
-    std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> attributes = {
+    Attributes attributes = {
         create_object(CKA_CLASS,     klass),
+
+//         std::make_pair(CKA_VALUE, attribute_t(CKA_VALUE, data.size())), // SPECIAL CASE FOR VALUE
         
         //Common Storage Object Attributes
         create_object(CKA_TOKEN,     bool_true),
         create_object(CKA_PRIVATE,   bool_true),
         create_object(CKA_MODIFIABLE,bool_false),
         create_object(CKA_LABEL,     file),
+        
     };
 
     return attributes;
@@ -294,8 +349,10 @@ Attributes public_key_attrs(const std::string& file, const std::string& data, CK
     const CK_MECHANISM_TYPE mech_type = CKM_RSA_X_509;
 
     //ftp://ftp.rsasecurity.com/pub/pkcs/pkcs-11/v2-20/pkcs-11v2-20.pdf
-    std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> attributes = {
+    Attributes attributes = {
         create_object(CKA_CLASS,     klass),
+        
+//         std::make_pair(CKA_VALUE, attribute_t(CKA_VALUE, data.size())), // SPECIAL CASE FOR VALUE
         
         //Common Storage Object Attributes
         create_object(CKA_TOKEN,     bool_true),
@@ -332,9 +389,10 @@ Attributes private_key_attrs(const std::string& file, const std::string& data, C
     const CK_OBJECT_CLASS klass = CKO_PRIVATE_KEY;
     const CK_MECHANISM_TYPE mech_type = CKM_RSA_X_509;
     
-    //ftp://ftp.rsasecurity.com/pub/pkcs/pkcs-11/v2-20/pkcs-11v2-20.pdf
-    std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> attributes = {
+    Attributes attributes = {
         create_object(CKA_CLASS,     klass),
+        
+//         std::make_pair(CKA_VALUE, attribute_t(CKA_VALUE, data.size())), // SPECIAL CASE FOR VALUE
         
         //Common Storage Object Attributes
         create_object(CKA_TOKEN,     bool_true),
@@ -378,8 +436,10 @@ Attributes secret_key_attrs(const std::string& file, const std::string& data, CK
     const CK_MECHANISM_TYPE mech_type = CKM_RSA_X_509;
     
     //ftp://ftp.rsasecurity.com/pub/pkcs/pkcs-11/v2-20/pkcs-11v2-20.pdf
-    std::map<CK_ATTRIBUTE_TYPE, CK_ATTRIBUTE> attributes = {
+    Attributes attributes = {
         create_object(CKA_CLASS,     klass),
+        
+//         std::make_pair(CKA_VALUE, attribute_t(CKA_VALUE, data.size())), // SPECIAL CASE FOR VALUE
         
         //Common Storage Object Attributes
         create_object(CKA_TOKEN,     bool_true),
