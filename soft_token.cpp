@@ -161,6 +161,7 @@ private:
 typedef boost::filter_iterator<std::function<bool(const fs::directory_entry&)>, fs::directory_iterator> files_iterator;
 typedef boost::transform_iterator<to_object_id, files_iterator> object_ids_iterator;
 
+typedef std::function<bool(const Objects::value_type&)> ObjectsPred;
 
 struct soft_token_t::Pimpl {
   
@@ -168,6 +169,7 @@ struct soft_token_t::Pimpl {
       config.put("path", "default");
     }
     
+    /// Iterate over all files in path
     files_iterator files_begin() const {
         if (fs::exists(path) && fs::is_directory(path)) {
             return files_iterator(is_object(), fs::directory_iterator(path));
@@ -176,70 +178,70 @@ struct soft_token_t::Pimpl {
         return files_end();
     };
     
+    /// end-iterator
     files_iterator files_end() const {
         return files_iterator(fs::directory_iterator());
     }
     
     
-    
-    Objects::const_iterator find(std::function<bool(const Objects::value_type&)> pred) const {
-        return std::find_if(objects.begin(), objects.end(), pred);
+    /// Find in objects by predicate
+    Objects::const_iterator find(std::function<bool(const Attributes&)> pred) const {
+        return std::find_if(objects.begin(), objects.end(), [&pred] (const Objects::value_type& v) {
+            return pred(v.second);
+        });
     }
     
-    Objects::iterator find(std::function<bool(const Objects::value_type&)> pred) {
-        return std::find_if(objects.begin(), objects.end(), pred);
+    /// Find in objects by predicate
+    Objects::iterator find(std::function<bool(const Attributes&)> pred) {
+        return std::find_if(objects.begin(), objects.end(), [&pred] (const Objects::value_type& v) {
+            return pred(v.second);
+        });
     }
     
     
-    template<typename Pred>
-    boost::filter_iterator<Pred, Objects::const_iterator> filter_iterator(Pred pred) const {
-        return boost::filter_iterator<Pred, Objects::const_iterator>(pred, objects.begin(), objects.end());
+    /// Filter objects by predicate
+    boost::filter_iterator<ObjectsPred, Objects::const_iterator> filter_iterator(ObjectsPred pred) const {
+        return boost::filter_iterator<ObjectsPred, Objects::const_iterator>(pred, objects.begin(), objects.end());
     }
     
-    template<typename Pred>
-    boost::filter_iterator<Pred, Objects::const_iterator> filter_end(Pred pred) const {
-        return boost::filter_iterator<Pred, Objects::const_iterator>(pred, objects.end(), objects.end());
+    /// Filter objects by predicate
+    boost::filter_iterator<ObjectsPred, Objects::iterator> filter_iterator(ObjectsPred pred) {
+        return boost::filter_iterator<ObjectsPred, Objects::iterator>(pred, objects.begin(), objects.end());
+    }
+
+    /// Filter objects by attributes
+    boost::filter_iterator<ObjectsPred, Objects::const_iterator> filter_iterator(const Attributes& attrs) const {
+        return boost::filter_iterator<ObjectsPred, Objects::const_iterator>(find_by_attrs(attrs), objects.begin(), objects.end());
     }
     
-    template<typename Pred>
-    boost::filter_iterator<Pred, Objects::iterator> filter_iterator(Pred pred) {
-        return boost::filter_iterator<Pred, Objects::iterator>(pred, objects.begin(), objects.end());
+    /// Filter objects by attributes
+    boost::filter_iterator<ObjectsPred, Objects::iterator> filter_iterator(const Attributes& attrs) {
+        return boost::filter_iterator<ObjectsPred, Objects::iterator>(find_by_attrs(attrs), objects.begin(), objects.end());
+    }
+
+    /// Filter end iterator
+    boost::filter_iterator<ObjectsPred, Objects::const_iterator> filter_end() const {
+        return boost::filter_iterator<ObjectsPred, Objects::const_iterator>(ObjectsPred(), objects.end(), objects.end());
     }
     
-    template<typename Pred>
-    boost::filter_iterator<Pred, Objects::iterator> filter_end(Pred pred) {
-        return boost::filter_iterator<Pred, Objects::iterator>(pred, objects.end(), objects.end());
+    /// Filter end iterator
+    boost::filter_iterator<ObjectsPred, Objects::iterator> filter_end() {
+        return boost::filter_iterator<ObjectsPred, Objects::iterator>(ObjectsPred(), objects.end(), objects.end());
     }
     
 
+
+    
+    /// Iterate over transformed(through trans-function) collection
     template<typename Trans, typename It = Objects::const_iterator>
     boost::transform_iterator<Trans, It> trans_iterator(Trans trans, It b) const {
         return boost::transform_iterator<Trans, It>(b, trans);
     }
     
+    /// Transformed end-iterator
     template<typename Trans, typename It = Objects::const_iterator>
     boost::transform_iterator<Trans, It> trans_end(Trans trans, It e) const {
         return boost::transform_iterator<Trans, It>(e, trans);
-    }
-    
-    
-    
-    boost::filter_iterator<find_by_attrs, Objects::const_iterator> find_iterator(const Attributes& attrs) const {
-        return boost::filter_iterator<find_by_attrs, Objects::const_iterator>(find_by_attrs(attrs), objects.begin(), objects.end());
-    }
-    
-    boost::filter_iterator<find_by_attrs, Objects::const_iterator> find_end() const {
-        const Attributes attrs;
-        return boost::filter_iterator<find_by_attrs, Objects::const_iterator>(find_by_attrs(attrs), objects.end(), objects.end());
-    }
-        
-    boost::filter_iterator<find_by_attrs, Objects::iterator> find_iterator(const Attributes& attrs) {
-        return boost::filter_iterator<find_by_attrs, Objects::iterator>(find_by_attrs(attrs), objects.begin(), objects.end());
-    }
-    
-    boost::filter_iterator<find_by_attrs, Objects::iterator> find_end() {
-        const Attributes attrs;
-        return boost::filter_iterator<find_by_attrs, Objects::iterator>(find_by_attrs(attrs), objects.end(), objects.end());
     }
 
     std::vector<int> vi;
@@ -289,16 +291,16 @@ soft_token_t::soft_token_t(const std::string& rcfile)
     const CK_OBJECT_CLASS public_key = CKO_PUBLIC_KEY;
     const CK_OBJECT_CLASS private_key = CKO_PRIVATE_KEY;
     
-    for(auto private_it = p_->find_iterator({create_object(CKA_CLASS, private_key)}); private_it != p_->find_end(); ++private_it) {
+    for(auto private_it = p_->filter_iterator({create_object(CKA_CLASS, private_key)}); private_it != p_->filter_end(); ++private_it) {
         auto public_it = std::find_if(
-            p_->find_iterator({create_object(CKA_CLASS, public_key)}),
-            p_->find_end(),
+            p_->filter_iterator({create_object(CKA_CLASS, public_key)}),
+            p_->filter_end(),
             [&private_it](Objects::value_type& pub_key){
                 return pub_key.second[CKA_LABEL].label() == (private_it->second[CKA_LABEL].label() + ".pub");
             }
         );
         
-        if (public_it != p_->find_end()) {
+        if (public_it != p_->filter_end()) {
             public_it->second[CKA_ID] = private_it->second[CKA_ID];
         }
     }
@@ -368,8 +370,8 @@ handle_iterator_t soft_token_t::handles_iterator() const
 handle_iterator_t soft_token_t::find_handles_iterator(const Attributes& attrs) const
 {
     st_logf("initialize search \n");
-    auto it = p_->trans_iterator(boost::bind(&Objects::value_type::first,_1), p_->find_iterator(attrs));
-    auto end = p_->trans_end(boost::bind(&Objects::value_type::first,_1), p_->find_end());
+    auto it = p_->trans_iterator(boost::bind(&Objects::value_type::first,_1), p_->filter_iterator(attrs));
+    auto end = p_->trans_end(boost::bind(&Objects::value_type::first,_1), p_->filter_end());
     
     return handle_iterator_t([it, end] () mutable {
         if (it != end) {
