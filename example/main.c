@@ -779,7 +779,7 @@ C_Initialize(CK_VOID_PTR a)
     
     soft_token.logfile = NULL;
 #if 1
-    soft_token.logfile = stdout;
+//     soft_token.logfile = stdout;
 #endif
 #if 0
     soft_token.logfile = fopen("/tmp/log-pkcs11.txt", "a");

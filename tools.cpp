@@ -1,5 +1,6 @@
 
 #include <ctype.h>
+#include <assert.h>
 #include <errno.h>
 #include <pwd.h>
 #include <stdarg.h>
@@ -7,15 +8,31 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <error.h>
+
+#include <iostream>
+
+#include <openssl/bn.h>
 
 #include "tools.h"
 
+int log_fd = 0;
+
+
 void st_logf(const char* fmt, ...)
 {
+    if (log_fd == 0) {
+        log_fd = ::open("/tmp/soft-token.log", O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+    }
+    
     va_list ap;
     va_start(ap, fmt);
-     vdprintf(STDOUT_FILENO, fmt, ap);
+//     vdprintf(STDOUT_FILENO, fmt, ap);
+    vdprintf(log_fd, fmt, ap);    
     va_end(ap); 
+    
+    fsync(log_fd);
 }
  
 void print_attributes(const CK_ATTRIBUTE *attributes, CK_ULONG num_attributes)
@@ -84,3 +101,22 @@ void print_attributes(const CK_ATTRIBUTE *attributes, CK_ULONG num_attributes)
         }
     }
 }
+
+std::pair<int, std::shared_ptr<unsigned char>> read_bignum(void* ssl_bignum)
+{
+    BIGNUM *b = reinterpret_cast<BIGNUM*>(ssl_bignum);
+    
+    int size = BN_num_bytes(b);
+    assert(size > 0);
+
+    std::shared_ptr<unsigned char> buff(malloc(size), free);
+    assert(buff.get() != NULL);
+
+    int rc = BN_bn2bin(b, buff.get());
+    assert(size == rc);
+    return std::make_pair(size, buff);
+}
+
+
+
+

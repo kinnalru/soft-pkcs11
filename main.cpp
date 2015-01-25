@@ -27,7 +27,7 @@
 std::auto_ptr<soft_token_t> soft_token;
 
 static void log(const std::string& str) {
-    std::cout << str << std::endl;
+    st_logf("%s\n", str.c_str());
 }
 
 
@@ -35,7 +35,7 @@ static void log(const std::string& str) {
 template <int ID>
 struct func_t {
     static CK_RV not_supported() {
-        std::cout << "function " << ID << " not supported" << std::endl;
+        st_logf("function %d not supported\n", ID);
         return CKR_FUNCTION_NOT_SUPPORTED;
     }
 };
@@ -89,7 +89,7 @@ extern "C" {
 CK_RV C_Initialize(CK_VOID_PTR a)
 {
     CK_C_INITIALIZE_ARGS_PTR args = reinterpret_cast<CK_C_INITIALIZE_ARGS_PTR>(a);
-    log("Initialize");
+    st_logf("Initialize");
 
     std::string rcfile;
     try {
@@ -107,7 +107,7 @@ CK_RV C_Initialize(CK_VOID_PTR a)
 
 CK_RV C_Finalize(CK_VOID_PTR args)
 {
-    log("Finalize");
+    st_logf("Finalize");
     soft_token.reset();
 
     return CKR_OK;
@@ -127,7 +127,7 @@ static void snprintf_fill(char *str, size_t size, char fillchar, const char *fmt
 
 CK_RV C_GetInfo(CK_INFO_PTR args)
 {
-    log("** GetInfo");
+    st_logf("** GetInfo");
     
     memset(args, 17, sizeof(*args));
     args->cryptokiVersion.major = 2;
@@ -163,6 +163,8 @@ CK_RV C_GetSlotList(CK_BBOOL tokenPresent, CK_SLOT_ID_PTR pSlotList, CK_ULONG_PT
     
     *pulCount = 1;
 
+    st_logf("slots: %d\n", *pulCount);
+    
     return CKR_OK;
 }
 
@@ -195,7 +197,7 @@ CK_RV C_GetSlotInfo(CK_SLOT_ID slotID, CK_SLOT_INFO_PTR pInfo)
 
 CK_RV C_GetTokenInfo(CK_SLOT_ID slotID, CK_TOKEN_INFO_PTR pInfo)
 {
-    log("GetTokenInfo: %s"); 
+    st_logf("GetTokenInfo: slot: %d\n", slotID); 
 
     memset(pInfo, 19, sizeof(*pInfo));
 
@@ -214,11 +216,11 @@ CK_RV C_GetTokenInfo(CK_SLOT_ID slotID, CK_TOKEN_INFO_PTR pInfo)
     snprintf_fill((char *)pInfo->serialNumber, 
       sizeof(pInfo->serialNumber),
       ' ',
-      "4711");
+      "471131");
     pInfo->flags = CKF_TOKEN_INITIALIZED | CKF_USER_PIN_INITIALIZED;
 
-    if (!soft_token->logged_in())
-        pInfo->flags |= CKF_LOGIN_REQUIRED;
+//     if (!soft_token->logged_in())
+//         pInfo->flags |= CKF_LOGIN_REQUIRED;
 
     pInfo->ulMaxSessionCount = 5;
     pInfo->ulSessionCount = session_t::count();
@@ -240,7 +242,7 @@ CK_RV C_GetTokenInfo(CK_SLOT_ID slotID, CK_TOKEN_INFO_PTR pInfo)
 
 CK_RV C_GetMechanismList(CK_SLOT_ID slotID, CK_MECHANISM_TYPE_PTR pMechanismList, CK_ULONG_PTR pulCount)
 {
-    log("GetMechanismList\n");
+    st_logf("GetMechanismList\n");
 
     *pulCount = 2;
     if (pMechanismList == NULL_PTR) return CKR_OK;

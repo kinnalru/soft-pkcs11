@@ -25,11 +25,13 @@
 
 namespace fs = boost::filesystem;
 
+struct descriptor_t;
+typedef std::shared_ptr<descriptor_t> descriptor_p;
 
-Attributes data_object_attrs(const std::string& file, const std::string& data, CK_OBJECT_HANDLE id);
-Attributes public_key_attrs(const std::string& file, const std::string& data, CK_OBJECT_HANDLE id);    
-Attributes private_key_attrs(const std::string& file, const std::string& data, CK_OBJECT_HANDLE id);
-Attributes secret_key_attrs(const std::string& file, const std::string& data, CK_OBJECT_HANDLE id);
+Attributes data_object_attrs(descriptor_p desc);
+Attributes public_key_attrs(descriptor_p desc);    
+Attributes private_key_attrs(descriptor_p desc);
+Attributes secret_key_attrs(descriptor_p desc);
 
 struct is_object : std::unary_function<const fs::directory_entry&, bool> {
     bool operator() (const fs::directory_entry& d) const {
@@ -45,62 +47,67 @@ private:
     std::hash<std::string> hash;
 };
 
-
-struct is_private_key : std::unary_function<const fs::directory_entry&, bool> {
-    bool operator() (const fs::directory_entry& d) {
-      std::ifstream infile(d.path().string());
-      std::string first_line;
-      std::getline(infile, first_line, '\n');
-      return first_line == "-----BEGIN RSA PRIVATE KEY-----";        
+struct descriptor_t {
+    descriptor_t(const fs::directory_entry& d)
+        : fullname(d.path().string())
+        , filename(d.path().filename().string())
+    {
+        std::ifstream stream1(d.path().string());
+        std::getline(stream1, first_line, '\n');
+        stream1.seekg (0, stream1.beg);
+        
+        std::ifstream stream(d.path().string());
+        
+        data = std::vector<char>((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+        id = to_object_id()(d);
+        file = ::fmemopen(data.data(), data.size(), "r");
     }
     
-    bool operator() (const std::string& data) {
-      std::stringstream infile(data);
-      std::string first_line;
-      std::getline(infile, first_line, '\n');
-      return first_line == "-----BEGIN RSA PRIVATE KEY-----";        
+    ~descriptor_t() {
+        ::fclose(file);
+    }
+    
+    const std::string fullname;
+    const std::string filename;
+    std::vector<char> data;
+    std::string first_line;
+    CK_OBJECT_HANDLE id;
+    FILE *file;
+};
+
+
+struct is_private_key : std::unary_function<descriptor_p, bool> {
+    bool operator() (descriptor_p desc) {
+        return desc->first_line == "-----BEGIN RSA PRIVATE KEY-----";        
     }
 };
 
-struct is_public_key : std::unary_function<const fs::directory_entry&, bool> {
-    bool operator() (const fs::directory_entry& d) {
-      std::ifstream infile(d.path().string());
-      std::string first_line;
-      std::getline(infile, first_line, '\n');
-      return (first_line.find("ssh-rsa") == 0)
-        || first_line == "-----BEGIN PUBLIC KEY-----"
-        || first_line == "-----BEGIN RSA PUBLIC KEY-----";        
-    }
-    
-    bool operator() (const std::string& data) {
-      std::stringstream infile(data);
-      std::string first_line;
-      std::getline(infile, first_line, '\n');
-      return (first_line.find("ssh-rsa") == 0)
-        ||first_line == "-----BEGIN PUBLIC KEY-----"
-        || first_line == "-----BEGIN RSA PUBLIC KEY-----";        
+struct is_public_key : std::unary_function<descriptor_p, bool> {
+    bool operator() (descriptor_p desc) {
+      return (desc->first_line.find("ssh-rsa") == 0)
+        || desc->first_line == "-----BEGIN PUBLIC KEY-----"
+        || desc->first_line == "-----BEGIN RSA PUBLIC KEY-----";        
     }
 };
 
 struct to_attributes : std::unary_function<const fs::directory_entry&, Objects::value_type> {
     Objects::value_type operator() (const fs::directory_entry& d) const {
-        const auto id = to_object_id()(d);
-        std::ifstream t(d.path().string());
-        const std::string data((std::istreambuf_iterator<char>(t)), std::istreambuf_iterator<char>());
+        
+        descriptor_p desc(new descriptor_t(d));
         
         Attributes attrs;
-        
-        if (is_private_key()(data)) {
-            attrs = private_key_attrs(d.path().filename().string(), data, id);
+
+        if (is_private_key()(desc)) {
+            attrs = private_key_attrs(desc);
         }
-        else if (is_public_key()(data)) {
-            attrs = public_key_attrs(d.path().filename().string(), data, id);
+        else if (is_public_key()(desc)) {
+            attrs = public_key_attrs(desc);
         } 
         else {
-            attrs = data_object_attrs(d.path().filename().string(), data, id);    
+            attrs = data_object_attrs(desc);    
         }
         
-        return std::make_pair(id, attrs);
+        return std::make_pair(desc->id, attrs);
     }
 };
 
@@ -177,12 +184,14 @@ int read_password (char *buf, int size, int rwflag, void *userdata) {
     return p.size();
 }
 
+
+/*
 bool check_file_is_private_key(const std::string& file) {
     std::ifstream infile(file);
     std::string first_line;
     std::getline(infile, first_line, '\n');
     return first_line == "-----BEGIN RSA PRIVATE KEY-----";
-}
+}*/
 
 soft_token_t::soft_token_t(const std::string& rcfile)
     : p_(new Pimpl())
@@ -201,7 +210,7 @@ soft_token_t::soft_token_t(const std::string& rcfile)
     const auto end = p_->files_end();
     const to_attributes convert;
     for(auto it = p_->files_begin(); it != end; ++it ) {
-        st_logf("Finded obejcts:\n");
+        st_logf("Finded obejcts: %s\n", it->path().filename().c_str());
         p_->objects.insert(convert(*it));
     }
     
@@ -209,9 +218,9 @@ soft_token_t::soft_token_t(const std::string& rcfile)
 
 soft_token_t::~soft_token_t()
 {
-    std::cerr << "DESTRUCTOR 1" << std::endl;
+//     std::cerr << "DESTRUCTOR 1" << std::endl;
     p_.reset();
-    std::cerr << "DESTRUCTOR 2" << std::endl;
+//     std::cerr << "DESTRUCTOR 2" << std::endl;
 }
 
 bool soft_token_t::logged_in() const
@@ -322,7 +331,7 @@ std::string soft_token_t::read(CK_OBJECT_HANDLE id) const
 const CK_BBOOL bool_true = CK_TRUE;
 const CK_BBOOL bool_false = CK_FALSE;
 
-Attributes data_object_attrs(const std::string& file, const std::string& data, CK_OBJECT_HANDLE id)
+Attributes data_object_attrs(descriptor_p desc)
 {
     const CK_OBJECT_CLASS klass = CKO_DATA;
     const CK_FLAGS flags = 0;
@@ -336,18 +345,19 @@ Attributes data_object_attrs(const std::string& file, const std::string& data, C
         create_object(CKA_TOKEN,     bool_true),
         create_object(CKA_PRIVATE,   bool_true),
         create_object(CKA_MODIFIABLE,bool_false),
-        create_object(CKA_LABEL,     file),
+        create_object(CKA_LABEL,     desc->filename),
         
     };
 
     return attributes;
 }
 
-Attributes public_key_attrs(const std::string& file, const std::string& data, CK_OBJECT_HANDLE id)
+Attributes public_key_attrs(descriptor_p desc)
 {
     const CK_OBJECT_CLASS klass = CKO_PUBLIC_KEY;
     const CK_MECHANISM_TYPE mech_type = CKM_RSA_X_509;
-
+    const CK_KEY_TYPE type = CKK_RSA;
+    
     //ftp://ftp.rsasecurity.com/pub/pkcs/pkcs-11/v2-20/pkcs-11v2-20.pdf
     Attributes attributes = {
         create_object(CKA_CLASS,     klass),
@@ -358,11 +368,11 @@ Attributes public_key_attrs(const std::string& file, const std::string& data, CK
         create_object(CKA_TOKEN,     bool_true),
         create_object(CKA_PRIVATE,   bool_false),
         create_object(CKA_MODIFIABLE,bool_false),
-        create_object(CKA_LABEL,     file),
+        create_object(CKA_LABEL,     desc->filename),
         
         //Common Key Attributes
-        //create_object(CKA_KEY_TYPE,        id),
-        create_object(CKA_ID,        id),
+        create_object(CKA_KEY_TYPE,  type),
+        create_object(CKA_ID,        desc->id),
         //create_object(CKA_START_DATE,        id),
         //create_object(CKA_END_DATE,        id),
         create_object(CKA_DERIVE,    bool_false),
@@ -380,14 +390,41 @@ Attributes public_key_attrs(const std::string& file, const std::string& data, CK
         /////////////
 
     };
+    
+   
+    if (type == CKK_RSA) {
+        EVP_PKEY *pkey = PEM_read_PUBKEY(desc->file, NULL, NULL, NULL);
+        if (pkey == NULL) {
+            if (FILE* converted = ::popen(std::string("ssh-keygen -f " + desc->fullname + " -e -m PKCS8").c_str(), "r")) {
+                pkey = PEM_read_PUBKEY(converted, NULL, NULL, NULL);
+                ::pclose(converted);
+            }
+        }
+
+        if (pkey) {
+            int size = 0;
+            std::shared_ptr<unsigned char> buf;
+            
+            std::tie(size, buf) = read_bignum(pkey->pkey.rsa->n);
+            attributes.insert(std::make_pair(CKA_MODULUS, attribute_t(CKA_MODULUS, buf.get(), size)));
+            attributes.insert(create_object(CKA_MODULUS_BITS,   size * 8));            
+            
+            std::tie(size, buf) = read_bignum(pkey->pkey.rsa->e);
+            attributes.insert(std::make_pair(CKA_PUBLIC_EXPONENT, attribute_t(CKA_PUBLIC_EXPONENT, buf.get(), size)));
+
+            EVP_PKEY_free(pkey);
+        }
+    }
+    
 
     return attributes;    
 }
 
-Attributes private_key_attrs(const std::string& file, const std::string& data, CK_OBJECT_HANDLE id)
+Attributes private_key_attrs(descriptor_p desc)
 {
     const CK_OBJECT_CLASS klass = CKO_PRIVATE_KEY;
     const CK_MECHANISM_TYPE mech_type = CKM_RSA_X_509;
+    const CK_KEY_TYPE type = CKK_RSA;
     
     Attributes attributes = {
         create_object(CKA_CLASS,     klass),
@@ -398,11 +435,11 @@ Attributes private_key_attrs(const std::string& file, const std::string& data, C
         create_object(CKA_TOKEN,     bool_true),
         create_object(CKA_PRIVATE,   bool_true),
         create_object(CKA_MODIFIABLE,bool_false),
-        create_object(CKA_LABEL,     file),
+        create_object(CKA_LABEL,     desc->filename),
         
         //Common Key Attributes
-        //create_object(CKA_KEY_TYPE,        id),
-        create_object(CKA_ID,        id),
+        create_object(CKA_KEY_TYPE,  type),
+        create_object(CKA_ID,        desc->id),
         //create_object(CKA_START_DATE,        id),
         //create_object(CKA_END_DATE,        id),
         create_object(CKA_DERIVE,    bool_false),
@@ -430,7 +467,7 @@ Attributes private_key_attrs(const std::string& file, const std::string& data, C
     return attributes;
 }
 
-Attributes secret_key_attrs(const std::string& file, const std::string& data, CK_OBJECT_HANDLE id)
+Attributes secret_key_attrs(descriptor_p desc)
 {
     const CK_OBJECT_CLASS klass = CKO_SECRET_KEY;
     const CK_MECHANISM_TYPE mech_type = CKM_RSA_X_509;
@@ -445,11 +482,11 @@ Attributes secret_key_attrs(const std::string& file, const std::string& data, CK
         create_object(CKA_TOKEN,     bool_true),
         create_object(CKA_PRIVATE,   bool_true),
         create_object(CKA_MODIFIABLE,bool_false),
-        create_object(CKA_LABEL,     file),
+        create_object(CKA_LABEL,     desc->filename),
         
         //Common Key Attributes
         //create_object(CKA_KEY_TYPE,        id),
-        create_object(CKA_ID,        id),
+        create_object(CKA_ID,        desc->id),
         //create_object(CKA_START_DATE,        id),
         //create_object(CKA_END_DATE,        id),
         create_object(CKA_DERIVE,    bool_false),
