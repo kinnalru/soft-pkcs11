@@ -377,6 +377,8 @@ CK_RV C_FindObjects(CK_SESSION_HANDLE hSession,
 
     for(auto id = session->objects_iterator(); id != soft_token->handle_invalid(); id = session->objects_iterator()) {
         
+        st_logf("found id %lu\n", id);
+        
         *phObject++ = id;
         (*pulObjectCount)++;
         ulMaxObjectCount--;

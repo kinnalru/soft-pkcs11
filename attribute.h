@@ -35,6 +35,14 @@ struct attribute_t {
     
     void apply(CK_ATTRIBUTE& dst) const;
     
+    const CK_ATTRIBUTE* operator->() const {
+        return &attr_;
+    }
+    
+    const std::string label() const {
+        return std::string(reinterpret_cast<char*>(attr_.pValue), attr_.ulValueLen);
+    }
+    
 private:
     CK_ATTRIBUTE attr_;
     std::shared_ptr<void> ptr_;

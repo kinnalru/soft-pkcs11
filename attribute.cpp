@@ -27,7 +27,7 @@ attribute_t::attribute_t(CK_ATTRIBUTE_TYPE type, const std::string& string) {
     CK_ATTRIBUTE other;
     other.type = type;
     other.pValue = const_cast<char*>(string.c_str());
-    other.ulValueLen = string.size() + 1;
+    other.ulValueLen = string.size();
     
     this->operator=(other);
 }
