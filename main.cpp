@@ -66,11 +66,13 @@ struct session_t {
 
     operator CK_SESSION_HANDLE() const {return id;}
     
+    
     const CK_SESSION_HANDLE id;
     handle_iterator_t objects_iterator;
+    bool logged;
     
 private:
-    session_t(CK_SESSION_HANDLE id) : id(id) {}
+    session_t(CK_SESSION_HANDLE id) : id(id), logged(false) {}
 
 private:
     static CK_SESSION_HANDLE _id;
@@ -220,7 +222,7 @@ CK_RV C_GetTokenInfo(CK_SLOT_ID slotID, CK_TOKEN_INFO_PTR pInfo)
     pInfo->flags = CKF_TOKEN_INITIALIZED | CKF_USER_PIN_INITIALIZED;
 
 //     if (!soft_token->logged_in())
-//         pInfo->flags |= CKF_LOGIN_REQUIRED;
+    pInfo->flags |= CKF_LOGIN_REQUIRED;
 
     pInfo->ulMaxSessionCount = 5;
     pInfo->ulSessionCount = session_t::count();
@@ -304,6 +306,10 @@ CK_RV C_FindObjectsInit(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, 
         return CKR_SESSION_HANDLE_INVALID;
     }
     
+    if (!session->logged) {
+      return CKR_USER_NOT_LOGGED_IN;
+    }
+    
     print_attributes(pTemplate, ulCount);
     
 //     VERIFY_SESSION_HANDLE(hSession, &state);
@@ -373,6 +379,10 @@ CK_RV C_FindObjects(CK_SESSION_HANDLE hSession,
         return CKR_SESSION_HANDLE_INVALID;
     }
     
+    if (!session->logged) {
+      return CKR_USER_NOT_LOGGED_IN;
+    }    
+    
     *pulObjectCount = 0;
 
     for(auto id = session->objects_iterator(); id != soft_token->handle_invalid(); id = session->objects_iterator()) {
@@ -410,6 +420,10 @@ CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, 
         return CKR_SESSION_HANDLE_INVALID;
     }
     
+    if (!session->logged) {
+        return CKR_USER_NOT_LOGGED_IN;
+    }  
+    
     st_logf(" input ");
     print_attributes(pTemplate, ulCount);
 
@@ -445,6 +459,24 @@ CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, 
     return CKR_OK;
 }
 
+CK_RV C_Login(CK_SESSION_HANDLE hSession, CK_USER_TYPE userType, CK_UTF8CHAR_PTR pPin, CK_ULONG ulPinLen)
+{
+    st_logf("Login\n");
+    
+    auto session = session_t::find(hSession);
+    if (session == session_t::end()) {
+        return CKR_SESSION_HANDLE_INVALID;
+    }
+    
+    if (session->logged) {
+        return CKR_USER_ALREADY_LOGGED_IN;
+    }  
+
+    session->logged = true;
+    //return CKR_PIN_INCORRECT;
+    return CKR_OK;
+    
+}
 
 
 CK_FUNCTION_LIST funcs = {
@@ -467,7 +499,7 @@ CK_FUNCTION_LIST funcs = {
         (void *)func_t<5>::not_supported, //C_GetSessionInfo,
     (void *)func_t<6>::not_supported, /* C_GetOperationState */
     (void *)func_t<7>::not_supported, /* C_SetOperationState */
-        (void *)func_t<8>::not_supported, //C_Login,
+    C_Login, //C_Login,
         (void *)func_t<9>::not_supported, //C_Logout,(void *)func_t::
     (void *)func_t<10>::not_supported, /* C_CreateObject */
     (void *)func_t<11>::not_supported, /* C_CopyObject */

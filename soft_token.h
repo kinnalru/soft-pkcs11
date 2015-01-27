@@ -26,7 +26,7 @@ public:
     Handles handles() const;
     
     handle_iterator_t handles_iterator() const;
-    handle_iterator_t find_handles_iterator(const Attributes& attrs) const;
+    handle_iterator_t find_handles_iterator(Attributes attrs) const;
     CK_OBJECT_HANDLE handle_invalid() const;    
     
     Attributes attributes(CK_OBJECT_HANDLE id) const;

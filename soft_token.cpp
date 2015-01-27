@@ -121,7 +121,7 @@ struct find_by_attrs : std::unary_function<const Objects::value_type, bool> {
         for (auto it = attrs.begin(); it != attrs.end(); ++it) {
             const Attributes& object_attrs = object_pair.second;
             
-            st_logf("compare attr type:: %d\n", it->first);        
+            st_logf("----- compare attr type:: %d\n", it->first);        
             
             auto fnd = object_attrs.find(it->first);
             if (fnd != object_attrs.end()) {
@@ -367,9 +367,11 @@ handle_iterator_t soft_token_t::handles_iterator() const
 
 
 
-handle_iterator_t soft_token_t::find_handles_iterator(const Attributes& attrs) const
+handle_iterator_t soft_token_t::find_handles_iterator(Attributes attrs) const
 {
     st_logf("initialize search \n");
+    attrs[123321] = attribute_t(123321, 0, 0);
+    st_logf("----- SET INVALID\n");
     auto it = p_->trans_iterator(boost::bind(&Objects::value_type::first,_1), p_->filter_iterator(attrs));
     auto end = p_->trans_end(boost::bind(&Objects::value_type::first,_1), p_->filter_end());
     
