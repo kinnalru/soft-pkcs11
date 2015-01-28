@@ -22,16 +22,27 @@
 #include "tools.h"
 #include "soft_token.h"
 
+enum Attribute : CK_ATTRIBUTE_TYPE {
+    AttrFilename = CKA_VENDOR_DEFINED + 1,
+    AttrFullpath,
+    AttrSshPublic,
+};
+
+const CK_BBOOL bool_true = CK_TRUE;
+const CK_BBOOL bool_false = CK_FALSE;
 
 namespace fs = boost::filesystem;
 
 struct descriptor_t;
 typedef std::shared_ptr<descriptor_t> descriptor_p;
 
-Attributes data_object_attrs(descriptor_p desc);
-Attributes public_key_attrs(descriptor_p desc);    
-Attributes private_key_attrs(descriptor_p desc);
-Attributes secret_key_attrs(descriptor_p desc);
+Attributes data_object_attrs(descriptor_p desc, const Attributes& attributes = Attributes());
+Attributes public_key_attrs(descriptor_p desc,  const Attributes& attributes = Attributes());    
+Attributes rsa_public_key_attrs(descriptor_p desc,  const Attributes& attributes = Attributes());
+Attributes ssh_public_key_attrs(descriptor_p desc,  const Attributes& attributes = Attributes());    
+Attributes private_key_attrs(descriptor_p desc, const Attributes& attributes = Attributes());
+Attributes rsa_private_key_attrs(descriptor_p desc, const Attributes& attributes = Attributes());
+Attributes secret_key_attrs(descriptor_p desc,  const Attributes& attributes = Attributes());
 
 struct is_object : std::unary_function<const fs::directory_entry&, bool> {
     bool operator() (const fs::directory_entry& d) const {
@@ -75,6 +86,26 @@ struct descriptor_t {
     FILE *file;
 };
 
+struct is_public_key : std::unary_function<descriptor_p, bool> {
+    bool operator() (descriptor_p desc) {
+      return desc->first_line.find("ssh-rsa") == 0
+        || desc->first_line == "-----BEGIN PUBLIC KEY-----"
+        || desc->first_line == "-----BEGIN RSA PUBLIC KEY-----";        
+    }
+};
+
+struct is_rsa_public_key : std::unary_function<descriptor_p, bool> {
+    bool operator() (descriptor_p desc) {
+      return desc->first_line == "-----BEGIN PUBLIC KEY-----"
+        || desc->first_line == "-----BEGIN RSA PUBLIC KEY-----";        
+    }
+};
+
+struct is_ssh_public_key : std::unary_function<descriptor_p, bool> {
+    bool operator() (descriptor_p desc) {
+      return desc->first_line.find("ssh-rsa") == 0;
+    }
+};
 
 struct is_private_key : std::unary_function<descriptor_p, bool> {
     bool operator() (descriptor_p desc) {
@@ -82,29 +113,57 @@ struct is_private_key : std::unary_function<descriptor_p, bool> {
     }
 };
 
-struct is_public_key : std::unary_function<descriptor_p, bool> {
+struct is_rsa_private_key : std::unary_function<descriptor_p, bool> {
     bool operator() (descriptor_p desc) {
-      return (desc->first_line.find("ssh-rsa") == 0)
-        || desc->first_line == "-----BEGIN PUBLIC KEY-----"
-        || desc->first_line == "-----BEGIN RSA PUBLIC KEY-----";        
+        return desc->first_line == "-----BEGIN RSA PRIVATE KEY-----";        
     }
 };
 
 struct to_attributes : std::unary_function<const fs::directory_entry&, Objects::value_type> {
-    Objects::value_type operator() (const fs::directory_entry& d) const {
+    
+    Objects& objects;
+    to_attributes(Objects& o): objects(o) {
+        
+    }
+    
+    Objects::value_type operator() (const fs::directory_entry& d) {
         
         descriptor_p desc(new descriptor_t(d));
         
-        Attributes attrs;
-
-        if (is_private_key()(desc)) {
-            attrs = private_key_attrs(desc);
+        std::cout << desc->fullname << std::endl;
+        
+        Attributes attrs = {
+            create_object(AttrFilename, desc->filename),
+            create_object(AttrFullpath, desc->fullname),
+        };
+        
+        attrs = data_object_attrs(desc, attrs);
+        
+        if (is_public_key()(desc)) {
+            attrs = public_key_attrs(desc, attrs);
         }
-        else if (is_public_key()(desc)) {
-            attrs = public_key_attrs(desc);
-        } 
-        else {
-            attrs = data_object_attrs(desc);    
+        if (is_rsa_public_key()(desc)) {
+            attrs = rsa_public_key_attrs(desc, attrs);
+        }
+        if (is_ssh_public_key()(desc)) {
+            attrs = ssh_public_key_attrs(desc, attrs);
+            attrs[AttrSshPublic] = attribute_t(AttrSshPublic, bool_false);
+            attrs[CKA_OBJECT_ID] = attribute_t(CKA_OBJECT_ID, desc->id + 10);
+            attrs[CKA_ID] = attribute_t(CKA_ID, desc->id + 10);
+            
+            objects.insert(std::make_pair(desc->id + 10, attrs));
+            
+            attrs[CKA_OBJECT_ID] = attribute_t(CKA_OBJECT_ID, desc->id);
+            attrs[CKA_ID] = attribute_t(CKA_ID, desc->id);
+            attrs[CKA_LABEL] = attribute_t(CKA_LABEL, "SSH " + attrs[CKA_LABEL].to_string());
+            attrs[AttrSshPublic] = attribute_t(AttrSshPublic, bool_true);
+        }
+        
+        if (is_private_key()(desc)) {
+            attrs = private_key_attrs(desc, attrs);
+        }
+        if (is_rsa_private_key()(desc)) {
+            attrs = rsa_private_key_attrs(desc, attrs);
         }
         
         return std::make_pair(desc->id, attrs);
@@ -126,20 +185,6 @@ struct find_by_attrs : std::unary_function<const Objects::value_type, bool> {
             auto fnd = object_attrs.find(it->first);
             if (fnd != object_attrs.end()) {
                 if (fnd->second != it->second) {
-                    if (it->first == CKA_ID) {
-                        st_logf("TYPE: %d\n",it->first);
-                        
-                        st_logf("second1: %d\n", it->second->type);
-                        st_logf("second1: %d\n", it->second->ulValueLen);
-                        st_logf("second1: %s\n", (char*)it->second->pValue);
-                        
-                        st_logf("second2: %d\n", fnd->second->type);
-                        st_logf("second2: %d\n", fnd->second->ulValueLen);
-                        st_logf("second2: %s\n", (char*)fnd->second->pValue);
-                    
-                        
-                        st_logf("COMPARE:  %d\n", memcmp(it->second->pValue, fnd->second->pValue, fnd->second->ulValueLen));
-                    }
                     st_logf("attr type %d NOT EQUAL\n", it->first);
                     return false;
                 }
@@ -199,36 +244,68 @@ struct soft_token_t::Pimpl {
     }
     
     
-    /// Filter objects by predicate
-    boost::filter_iterator<ObjectsPred, Objects::const_iterator> filter_iterator(ObjectsPred pred) const {
-        return boost::filter_iterator<ObjectsPred, Objects::const_iterator>(pred, objects.begin(), objects.end());
-    }
-    
-    /// Filter objects by predicate
-    boost::filter_iterator<ObjectsPred, Objects::iterator> filter_iterator(ObjectsPred pred) {
-        return boost::filter_iterator<ObjectsPred, Objects::iterator>(pred, objects.begin(), objects.end());
-    }
+//     
+//     boost::filter_iterator<ObjectsPred, Objects::const_iterator> filter_iterator(ObjectsPred pred) const {
+//         return boost::filter_iterator<ObjectsPred, Objects::const_iterator>(pred, objects.begin(), objects.end());
+//     }
+//     
+//     /// Filter objects by predicate
+//     boost::filter_iterator<ObjectsPred, Objects::iterator> filter_iterator(ObjectsPred pred) {
+//         return boost::filter_iterator<ObjectsPred, Objects::iterator>(pred, objects.begin(), objects.end());
+//     }
 
-    /// Filter objects by attributes
-    boost::filter_iterator<ObjectsPred, Objects::const_iterator> filter_iterator(const Attributes& attrs) const {
-        return boost::filter_iterator<ObjectsPred, Objects::const_iterator>(find_by_attrs(attrs), objects.begin(), objects.end());
+    /// Filter objects by predicate
+    template <typename It = Objects::iterator>
+    boost::filter_iterator<ObjectsPred, It> filter_iterator(ObjectsPred pred, It b = It(), It e = It()) {
+        if (b == It()) {b = objects.begin();}
+        if (e == It()) {e = objects.end();}
+        
+        return boost::filter_iterator<ObjectsPred, It>(pred, b, e);
     }
     
+//     /// Filter objects by predicate
+//     template <typename It = Objects::const_iterator>
+//     boost::filter_iterator<ObjectsPred, It> filter_iterator(ObjectsPred pred, It b = It(), It e = It()) const {
+//         if (b == It()) {b = objects.begin();}
+//         if (e == It()) {e = objects.end();}
+//         
+//         return boost::filter_iterator<ObjectsPred, It>(pred, b, e);
+//     }
+    
     /// Filter objects by attributes
-    boost::filter_iterator<ObjectsPred, Objects::iterator> filter_iterator(const Attributes& attrs) {
-        return boost::filter_iterator<ObjectsPred, Objects::iterator>(find_by_attrs(attrs), objects.begin(), objects.end());
+    template <typename It = Objects::iterator>
+    boost::filter_iterator<ObjectsPred, It> filter_iterator(const Attributes& attrs, It b = It(), It e = It()) {
+        if (b == It()) {b = objects.begin();}
+        if (e == It()) {e = objects.end();}
+        
+        return boost::filter_iterator<ObjectsPred, It>(find_by_attrs(attrs), b, e);
     }
+    
+//     /// Filter objects by attributes
+//     template <typename It = Objects::const_iterator>
+//     boost::filter_iterator<ObjectsPred, It> filter_iterator(const Attributes& attrs, It b = It(), It e = It()) const {
+//         if (b == It()) {b = objects.begin();}
+//         if (e == It()) {e = objects.end();}
+//         
+//         return boost::filter_iterator<ObjectsPred, It>(find_by_attrs(attrs), b, e);
+//     }
+//     
+    
+    
 
     /// Filter end iterator
-    boost::filter_iterator<ObjectsPred, Objects::const_iterator> filter_end() const {
-        return boost::filter_iterator<ObjectsPred, Objects::const_iterator>(ObjectsPred(), objects.end(), objects.end());
+    template <typename It = Objects::iterator>
+    boost::filter_iterator<ObjectsPred, It> filter_end(It e = It()) {
+        if (e == It()) {e = objects.end();}
+        
+        return boost::filter_iterator<ObjectsPred, It>(ObjectsPred(), e, e);
     }
     
-    /// Filter end iterator
-    boost::filter_iterator<ObjectsPred, Objects::iterator> filter_end() {
-        return boost::filter_iterator<ObjectsPred, Objects::iterator>(ObjectsPred(), objects.end(), objects.end());
-    }
-    
+//     /// Filter end iterator
+//     boost::filter_iterator<ObjectsPred, Objects::iterator> filter_end() {
+//         return boost::filter_iterator<ObjectsPred, Objects::iterator>(ObjectsPred(), objects.end(), objects.end());
+//     }
+//     
 
 
     
@@ -249,6 +326,7 @@ struct soft_token_t::Pimpl {
     boost::property_tree::ptree config;
     std::string path;
     Objects objects;
+    std::string pin;
 };
 
 int read_password (char *buf, int size, int rwflag, void *userdata) {
@@ -282,7 +360,7 @@ soft_token_t::soft_token_t(const std::string& rcfile)
     st_logf("Path : %s\n", p_->path.c_str());
     
     const auto end = p_->files_end();
-    const to_attributes convert;
+    to_attributes convert(p_->objects);
     for(auto it = p_->files_begin(); it != end; ++it ) {
         const auto a = p_->objects.insert(convert(*it)).first;
         st_logf("Finded obejcts: %s %lu\n", it->path().filename().c_str(), a->first);
@@ -292,39 +370,32 @@ soft_token_t::soft_token_t(const std::string& rcfile)
     const CK_OBJECT_CLASS private_key = CKO_PRIVATE_KEY;
     
     for(auto private_it = p_->filter_iterator({create_object(CKA_CLASS, private_key)}); private_it != p_->filter_end(); ++private_it) {
-        auto public_it = std::find_if(
+//         auto public_it = std::find_if(
+//             p_->filter_iterator({create_object(CKA_CLASS, public_key)}),
+//             p_->filter_end(),
+//             [&private_it](Objects::value_type& pub_key){
+//                 return (pub_key.second[CKA_LABEL].to_string() == (private_it->second[CKA_LABEL].to_string() + ".pub")) || 
+//                 pub_key.second[CKA_MODULUS] == private_it->second[CKA_MODULUS];
+//             }
+//         );
+        
+        auto public_it = p_->filter_iterator([&private_it] (const Objects::value_type& pub_key) mutable {
+            return (pub_key.second[CKA_LABEL].to_string() == (private_it->second[CKA_LABEL].to_string() + ".pub")) || 
+                pub_key.second[CKA_MODULUS] == private_it->second[CKA_MODULUS];
+        },
             p_->filter_iterator({create_object(CKA_CLASS, public_key)}),
-            p_->filter_end(),
-            [&private_it](Objects::value_type& pub_key){
-                return pub_key.second[CKA_LABEL].label() == (private_it->second[CKA_LABEL].label() + ".pub");
-            }
+            p_->filter_end()
         );
         
-        if (public_it != p_->filter_end()) {
-            public_it->second[CKA_ID] = private_it->second[CKA_ID];
-        }
-    }
-    
-//     for(auto it = p_->objects.begin(); it != p_->objects.end(); ++it) {
-//         auto klass = it->second.find(CKA_CLASS);
-//         if (klass != it->second.end()) {
-//             if (klass->second == attribute_t(CKA_CLASS, private_key)) {
-//                 
-//                 auto pub = p_->find([&] (const Objects::value_type& o) {
-//                     auto tmp_pub = o.second.find(CKA_LABEL);
-//                     if (tmp_pub != o.second.end()) {
-//                         return tmp_pub->second.label() == it->second.label() + ".pub";
-//                     }
-// 
-//                     return false;
-// 
-//                 });
-//                 
-//                 pub->second[CKA_ID] = priv->second[CKA_ID];
-//             }
+        auto public_end = p_->filter_end(p_->filter_end());
+        
+//         for()
+        
+//         if (public_it != p_->filter_end()) {
+//             public_it->second[CKA_ID] = private_it->second[CKA_ID];
 //         }
-//     }
-    
+    }
+
     st_logf("Invalid obejct: %lu\n", this->handle_invalid());
     
 }
@@ -336,10 +407,15 @@ soft_token_t::~soft_token_t()
 //     std::cerr << "DESTRUCTOR 2" << std::endl;
 }
 
-bool soft_token_t::logged_in() const
+bool soft_token_t::logged() const
 {
-    return false;
+    return !p_->pin.empty();
+}
 
+bool soft_token_t::login(const std::string& pin)
+{
+    p_->pin = pin;
+    return logged();
 }
 
 Handles soft_token_t::handles() const
@@ -360,7 +436,7 @@ handle_iterator_t soft_token_t::handles_iterator() const
             return *(it++);
         }
         else {
-            return static_cast<CK_OBJECT_HANDLE>(-1);  
+            soft_token_t::handle_invalid();
         }
     });
 }
@@ -369,9 +445,6 @@ handle_iterator_t soft_token_t::handles_iterator() const
 
 handle_iterator_t soft_token_t::find_handles_iterator(Attributes attrs) const
 {
-    st_logf("initialize search \n");
-    attrs[123321] = attribute_t(123321, 0, 0);
-    st_logf("----- SET INVALID\n");
     auto it = p_->trans_iterator(boost::bind(&Objects::value_type::first,_1), p_->filter_iterator(attrs));
     auto end = p_->trans_end(boost::bind(&Objects::value_type::first,_1), p_->filter_end());
     
@@ -380,12 +453,12 @@ handle_iterator_t soft_token_t::find_handles_iterator(Attributes attrs) const
             return *(it++);
         }
         else {
-            return static_cast<CK_OBJECT_HANDLE>(-1);  
+            return soft_token_t::handle_invalid();
         }
     });
 }
 
-CK_OBJECT_HANDLE soft_token_t::handle_invalid() const
+CK_OBJECT_HANDLE soft_token_t::handle_invalid()
 {
     return static_cast<CK_OBJECT_HANDLE>(-1);  
 }
@@ -404,55 +477,54 @@ Attributes soft_token_t::attributes(CK_OBJECT_HANDLE id) const
 
 std::string soft_token_t::read(CK_OBJECT_HANDLE id) const
 {
-    to_object_id conv;
-    auto it = std::find_if(p_->files_begin(), p_->files_end(), [&conv, id](const fs::directory_entry& d) {
-        return conv(d) == id;
-    });
+    auto it = p_->objects.find(id);
     
-    if (it != p_->files_end()) {
-        std::ifstream t(it->path().string());
+    if (it != p_->objects.end()) {
+        std::ifstream t(it->second[AttrFullpath].to_string());
         return std::string((std::istreambuf_iterator<char>(t)), std::istreambuf_iterator<char>());
     }
-    
+
     return std::string();
 }
 
 
-const CK_BBOOL bool_true = CK_TRUE;
-const CK_BBOOL bool_false = CK_FALSE;
 
-Attributes data_object_attrs(descriptor_p desc)
+
+Attributes data_object_attrs(descriptor_p desc, const Attributes& attributes)
 {
     const CK_OBJECT_CLASS klass = CKO_DATA;
     const CK_FLAGS flags = 0;
     
-    Attributes attributes = {
+    
+    Attributes attrs = {
         create_object(CKA_CLASS,     klass),
 
-//         std::make_pair(CKA_VALUE, attribute_t(CKA_VALUE, data.size())), // SPECIAL CASE FOR VALUE
-        
         //Common Storage Object Attributes
         create_object(CKA_TOKEN,     bool_true),
         create_object(CKA_PRIVATE,   bool_true),
         create_object(CKA_MODIFIABLE,bool_false),
         create_object(CKA_LABEL,     desc->filename),
         
+        //Data Object Attributes
+        //create_object(CKA_APPLICATION, desc->id),
+        create_object(CKA_OBJECT_ID, desc->id),
+        //create_object(CKA_VALUE, desc->id), //read when needed
     };
 
-    return attributes;
+    //keys in attrs takes precedence with attributes
+    attrs.insert(attributes.begin(), attributes.end());
+    
+    return attrs;
 }
 
-Attributes public_key_attrs(descriptor_p desc)
+Attributes public_key_attrs(descriptor_p desc, const Attributes& attributes)
 {
     const CK_OBJECT_CLASS klass = CKO_PUBLIC_KEY;
     const CK_MECHANISM_TYPE mech_type = CKM_RSA_X_509;
-    const CK_KEY_TYPE type = CKK_RSA;
     
     //ftp://ftp.rsasecurity.com/pub/pkcs/pkcs-11/v2-20/pkcs-11v2-20.pdf
-    Attributes attributes = {
+    Attributes attrs = {
         create_object(CKA_CLASS,     klass),
-        
-//         std::make_pair(CKA_VALUE, attribute_t(CKA_VALUE, data.size())), // SPECIAL CASE FOR VALUE
         
         //Common Storage Object Attributes
         create_object(CKA_TOKEN,     bool_true),
@@ -461,8 +533,8 @@ Attributes public_key_attrs(descriptor_p desc)
         create_object(CKA_LABEL,     desc->filename),
         
         //Common Key Attributes
-        create_object(CKA_KEY_TYPE,  type),
-        create_object(CKA_ID,        std::to_string(desc->id)),
+        //create_object(CKA_KEY_TYPE,  type),
+        create_object(CKA_ID,        desc->id),
         //create_object(CKA_START_DATE,        id),
         //create_object(CKA_END_DATE,        id),
         create_object(CKA_DERIVE,    bool_false),
@@ -482,42 +554,62 @@ Attributes public_key_attrs(descriptor_p desc)
     };
     
    
-    //RSA Public Key Object Attributes
-    if (type == CKK_RSA) {
-        EVP_PKEY *pkey = PEM_read_PUBKEY(desc->file, NULL, NULL, NULL);
-        if (pkey == NULL) {
-            if (FILE* converted = ::popen(std::string("ssh-keygen -f " + desc->fullname + " -e -m PKCS8").c_str(), "r")) {
-                pkey = PEM_read_PUBKEY(converted, NULL, NULL, NULL);
-                ::pclose(converted);
-            }
-        }
+    //keys in attrs takes precedence with attributes
+    attrs.insert(attributes.begin(), attributes.end());
 
-        if (pkey) {
-            int size = 0;
-            std::shared_ptr<unsigned char> buf;
-            
-            std::tie(size, buf) = read_bignum(pkey->pkey.rsa->n);
-            attributes.insert(std::make_pair(CKA_MODULUS, attribute_t(CKA_MODULUS, buf.get(), size)));
-            attributes.insert(create_object(CKA_MODULUS_BITS,   size * 8));            
-            
-            std::tie(size, buf) = read_bignum(pkey->pkey.rsa->e);
-            attributes.insert(std::make_pair(CKA_PUBLIC_EXPONENT, attribute_t(CKA_PUBLIC_EXPONENT, buf.get(), size)));
-
-            EVP_PKEY_free(pkey);
-        }
-    }
-    
-
-    return attributes;    
+    return attrs;    
 }
 
-Attributes private_key_attrs(descriptor_p desc)
+Attributes rsa_public_key_attrs(descriptor_p desc, const Attributes& attributes)
+{
+    const CK_KEY_TYPE type = CKK_RSA;
+    
+    Attributes attrs = {
+        create_object(CKA_KEY_TYPE,  type),
+    };
+    
+    if (EVP_PKEY *pkey = PEM_read_PUBKEY(desc->file, NULL, NULL, NULL)) {
+        int size = 0;
+        std::shared_ptr<unsigned char> buf;
+        
+        std::tie(size, buf) = read_bignum(pkey->pkey.rsa->n);
+        attrs.insert(std::make_pair(CKA_MODULUS, attribute_t(CKA_MODULUS, buf.get(), size)));
+        attrs.insert(create_object(CKA_MODULUS_BITS,   size * 8));            
+        
+        std::tie(size, buf) = read_bignum(pkey->pkey.rsa->e);
+        attrs.insert(std::make_pair(CKA_PUBLIC_EXPONENT, attribute_t(CKA_PUBLIC_EXPONENT, buf.get(), size)));
+
+        EVP_PKEY_free(pkey);
+    }
+    
+    //keys in attrs takes precedence with attributes
+    attrs.insert(attributes.begin(), attributes.end());
+
+    return attrs;  
+}
+
+Attributes ssh_public_key_attrs(descriptor_p desc, const Attributes& attributes)
+{
+    FILE* reserve = desc->file;
+    
+    if (FILE* converted = ::popen(std::string("ssh-keygen -f " + desc->fullname + " -e -m PKCS8").c_str(), "r")) {
+        desc->file = converted;
+        return rsa_public_key_attrs(desc, attributes);
+        ::pclose(converted);
+    }
+    
+    desc->file = reserve;
+    
+    return attributes;  
+}
+
+Attributes private_key_attrs(descriptor_p desc, const Attributes& attributes)
 {
     const CK_OBJECT_CLASS klass = CKO_PRIVATE_KEY;
     const CK_MECHANISM_TYPE mech_type = CKM_RSA_X_509;
-    const CK_KEY_TYPE type = CKK_RSA;
+    const CK_KEY_TYPE type = CKK_GENERIC_SECRET;
     
-    Attributes attributes = {
+    Attributes attrs = {
         create_object(CKA_CLASS,     klass),
         
 //         std::make_pair(CKA_VALUE, attribute_t(CKA_VALUE, data.size())), // SPECIAL CASE FOR VALUE
@@ -530,8 +622,8 @@ Attributes private_key_attrs(descriptor_p desc)
         
         //Common Key Attributes
         create_object(CKA_KEY_TYPE,  type),
-        create_object(CKA_ID,        std::to_string(desc->id)),
-        //create_object(CKA_START_DATE,        id),
+        create_object(CKA_ID,        desc->id),
+        //create_object(CKA_START_DATE,      id),
         //create_object(CKA_END_DATE,        id),
         create_object(CKA_DERIVE,    bool_false),
         create_object(CKA_LOCAL,     bool_false),
@@ -539,7 +631,7 @@ Attributes private_key_attrs(descriptor_p desc)
         
         //Common Private Key Attributes
         //create_object(CKA_SUBJECT,   bool_true),
-        create_object(CKA_SENSITIVE,      bool_true), //bool_false
+        create_object(CKA_SENSITIVE, bool_true),
         create_object(CKA_DECRYPT,   bool_true),
         create_object(CKA_SIGN,      bool_true),
         create_object(CKA_SIGN_RECOVER, bool_false),
@@ -555,42 +647,45 @@ Attributes private_key_attrs(descriptor_p desc)
 
     };
     
-    //RSA Private Key Object Attributes
-    if (type == CKK_RSA) {
-//         EVP_PKEY *pkey = PEM_read_PR(desc->file, NULL, NULL, NULL);
-//         if (pkey == NULL) {
-//             if (FILE* converted = ::popen(std::string("ssh-keygen -f " + desc->fullname + " -e -m PKCS8").c_str(), "r")) {
-//                 pkey = PEM_read_PUBKEY(converted, NULL, NULL, NULL);
-//                 ::pclose(converted);
-//             }
-//         }
-// 
-//         if (pkey) {
-//             int size = 0;
-//             std::shared_ptr<unsigned char> buf;
-//             
-//             std::tie(size, buf) = read_bignum(pkey->pkey.rsa->n);
-//             attributes.insert(std::make_pair(CKA_MODULUS, attribute_t(CKA_MODULUS, buf.get(), size)));
-//             attributes.insert(create_object(CKA_MODULUS_BITS,   size * 8));            
-//             
-//             std::tie(size, buf) = read_bignum(pkey->pkey.rsa->e);
-//             attributes.insert(std::make_pair(CKA_PUBLIC_EXPONENT, attribute_t(CKA_PUBLIC_EXPONENT, buf.get(), size)));
-// 
-//             EVP_PKEY_free(pkey);
-//         }
-    }
+    //keys in attrs takes precedence with attributes 
+    attrs.insert(attributes.begin(), attributes.end());
 
-
-    return attributes;
+    return attrs;  
 }
 
-Attributes secret_key_attrs(descriptor_p desc)
+Attributes rsa_private_key_attrs(descriptor_p desc, const Attributes& attributes) {
+    const CK_KEY_TYPE type = CKK_RSA;
+    
+    Attributes attrs = {
+        create_object(CKA_KEY_TYPE,  type),
+    };
+    
+    if (EVP_PKEY *pkey = PEM_read_PrivateKey(desc->file, NULL, NULL, "")) {
+        int size = 0;
+        std::shared_ptr<unsigned char> buf;
+        
+        std::tie(size, buf) = read_bignum(pkey->pkey.rsa->n);
+        attrs.insert(std::make_pair(CKA_MODULUS, attribute_t(CKA_MODULUS, buf.get(), size)));
+        
+        std::tie(size, buf) = read_bignum(pkey->pkey.rsa->e);
+        attrs.insert(std::make_pair(CKA_PUBLIC_EXPONENT, attribute_t(CKA_PUBLIC_EXPONENT, buf.get(), size)));
+
+        EVP_PKEY_free(pkey);
+    }
+    
+    //keys in attrs takes precedence with attributes
+    attrs.insert(attributes.begin(), attributes.end());
+
+    return attrs; 
+}
+
+Attributes secret_key_attrs(descriptor_p desc, const Attributes& attributes)
 {
     const CK_OBJECT_CLASS klass = CKO_SECRET_KEY;
     const CK_MECHANISM_TYPE mech_type = CKM_RSA_X_509;
     
     //ftp://ftp.rsasecurity.com/pub/pkcs/pkcs-11/v2-20/pkcs-11v2-20.pdf
-    Attributes attributes = {
+    Attributes attrs = {
         create_object(CKA_CLASS,     klass),
         
 //         std::make_pair(CKA_VALUE, attribute_t(CKA_VALUE, data.size())), // SPECIAL CASE FOR VALUE
@@ -603,7 +698,7 @@ Attributes secret_key_attrs(descriptor_p desc)
         
         //Common Key Attributes
         //create_object(CKA_KEY_TYPE,        id),
-        create_object(CKA_ID,        std::to_string(desc->id)),
+        create_object(CKA_ID,        desc->id),
         //create_object(CKA_START_DATE,        id),
         //create_object(CKA_END_DATE,        id),
         create_object(CKA_DERIVE,    bool_false),
@@ -632,7 +727,10 @@ Attributes secret_key_attrs(descriptor_p desc)
 
     };
 
-    return attributes;
+    //keys in attrs takes precedence with attributes
+    attrs.insert(attributes.begin(), attributes.end());
+
+    return attrs;
 }
 
 

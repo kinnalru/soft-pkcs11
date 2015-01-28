@@ -39,7 +39,7 @@ struct attribute_t {
         return &attr_;
     }
     
-    const std::string label() const {
+    const std::string to_string() const {
         return std::string(reinterpret_cast<char*>(attr_.pValue), attr_.ulValueLen);
     }
     

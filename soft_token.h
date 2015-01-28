@@ -21,13 +21,14 @@ public:
     soft_token_t(const std::string& rcfile);
     ~soft_token_t();
     
-    bool logged_in() const;
+    bool logged() const;
+    bool login(const std::string& pin);
 
     Handles handles() const;
     
     handle_iterator_t handles_iterator() const;
     handle_iterator_t find_handles_iterator(Attributes attrs) const;
-    CK_OBJECT_HANDLE handle_invalid() const;    
+    static CK_OBJECT_HANDLE handle_invalid();    
     
     Attributes attributes(CK_OBJECT_HANDLE id) const;
      

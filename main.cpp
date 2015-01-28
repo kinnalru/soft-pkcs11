@@ -69,10 +69,9 @@ struct session_t {
     
     const CK_SESSION_HANDLE id;
     handle_iterator_t objects_iterator;
-    bool logged;
     
 private:
-    session_t(CK_SESSION_HANDLE id) : id(id), logged(false) {}
+    session_t(CK_SESSION_HANDLE id) : id(id) {}
 
 private:
     static CK_SESSION_HANDLE _id;
@@ -306,7 +305,7 @@ CK_RV C_FindObjectsInit(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, 
         return CKR_SESSION_HANDLE_INVALID;
     }
     
-    if (!session->logged) {
+    if (!soft_token->logged()) {
       return CKR_USER_NOT_LOGGED_IN;
     }
     
@@ -379,7 +378,7 @@ CK_RV C_FindObjects(CK_SESSION_HANDLE hSession,
         return CKR_SESSION_HANDLE_INVALID;
     }
     
-    if (!session->logged) {
+    if (!soft_token->logged()) {
       return CKR_USER_NOT_LOGGED_IN;
     }    
     
@@ -420,7 +419,7 @@ CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, 
         return CKR_SESSION_HANDLE_INVALID;
     }
     
-    if (!session->logged) {
+    if (!soft_token->logged()) {
         return CKR_USER_NOT_LOGGED_IN;
     }  
     
@@ -430,12 +429,8 @@ CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, 
     auto attrs = soft_token->attributes(hObject);
     
     for (i = 0; i < ulCount; i++) {
-//         st_logf("   getting 0x%08lx i:%d\n", (unsigned long)pTemplate[i].type, i);
-
-//             std::cout << "assign" << std::endl;
             auto it = attrs.find(pTemplate[i].type);
             
-//             std::cout << "tmpl mem size:" << pTemplate[i].ulValueLen << std::endl;
             if (it != attrs.end())
             {
                 it->second.apply(pTemplate[i]);
@@ -449,7 +444,6 @@ CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, 
                 pTemplate[i].ulValueLen = data.size();
             }
             else if (it == attrs.end()) {
-//                 st_logf("key type: 0x%08lx not found\n", (unsigned long)pTemplate[i].type);
                 pTemplate[i].ulValueLen = (CK_ULONG)-1;
             }
     }
@@ -468,14 +462,16 @@ CK_RV C_Login(CK_SESSION_HANDLE hSession, CK_USER_TYPE userType, CK_UTF8CHAR_PTR
         return CKR_SESSION_HANDLE_INVALID;
     }
     
-    if (session->logged) {
+    if (soft_token->logged()) {
         return CKR_USER_ALREADY_LOGGED_IN;
     }  
 
-    session->logged = true;
-    //return CKR_PIN_INCORRECT;
-    return CKR_OK;
-    
+    if (soft_token->login(std::string(pPin, ulPinLen))) {
+        return CKR_OK;    
+    }
+    else {
+        return CKR_PIN_INCORRECT;  
+    }
 }
 
 
