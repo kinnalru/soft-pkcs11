@@ -31,6 +31,7 @@ public:
     static CK_OBJECT_HANDLE handle_invalid();    
     
     Attributes attributes(CK_OBJECT_HANDLE id) const;
+    bool check(CK_OBJECT_HANDLE id, const Attributes& attrs) const;
      
     std::string read(CK_OBJECT_HANDLE id) const;
 

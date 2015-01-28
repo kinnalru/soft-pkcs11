@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <memory>
 #include <list>
+#include <set>
 
 #include <boost/foreach.hpp>
 
@@ -69,6 +70,8 @@ struct session_t {
     
     const CK_SESSION_HANDLE id;
     handle_iterator_t objects_iterator;
+    CK_OBJECT_HANDLE sign_key;
+    CK_MECHANISM sign_mechanism;
     
 private:
     session_t(CK_SESSION_HANDLE id) : id(id) {}
@@ -305,10 +308,6 @@ CK_RV C_FindObjectsInit(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, 
         return CKR_SESSION_HANDLE_INVALID;
     }
     
-    if (!soft_token->logged()) {
-      return CKR_USER_NOT_LOGGED_IN;
-    }
-    
     print_attributes(pTemplate, ulCount);
     
 //     VERIFY_SESSION_HANDLE(hSession, &state);
@@ -326,6 +325,7 @@ CK_RV C_FindObjectsInit(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, 
         }
         
         session->objects_iterator = soft_token->find_handles_iterator(attrs);
+        st_logf(" == find initialized\n");
         
 //         std::cout << "F1:" << session->objects_iterator() << std::endl;
 //         std::cout << "F2:" << session->objects_iterator() << std::endl;
@@ -378,10 +378,6 @@ CK_RV C_FindObjects(CK_SESSION_HANDLE hSession,
         return CKR_SESSION_HANDLE_INVALID;
     }
     
-    if (!soft_token->logged()) {
-      return CKR_USER_NOT_LOGGED_IN;
-    }    
-    
     *pulObjectCount = 0;
 
     for(auto id = session->objects_iterator(); id != soft_token->handle_invalid(); id = session->objects_iterator()) {
@@ -404,6 +400,16 @@ CK_RV C_FindObjectsFinal(CK_SESSION_HANDLE hSession)
     return CKR_OK;
 }
 
+const std::set<CK_ATTRIBUTE_TYPE> public_attributes = {
+    CKA_CLASS, CKA_LABEL, CKA_APPLICATION, CKA_OBJECT_ID, CKA_MODIFIABLE,
+    CKA_PRIVATE, CKA_TOKEN, CKA_DERIVE, CKA_LOCAL, CKA_KEY_GEN_MECHANISM, 
+    CKA_ENCRYPT, CKA_VERIFY, CKA_KEY_TYPE, CKA_MODULUS, CKA_MODULUS_BITS, 
+    CKA_PUBLIC_EXPONENT, CKA_SENSITIVE, CKA_DECRYPT, CKA_SIGN, 
+    CKA_SIGN_RECOVER, CKA_UNWRAP, CKA_EXTRACTABLE, CKA_NEVER_EXTRACTABLE,
+    CKA_ALWAYS_AUTHENTICATE, CKA_ID, CKA_WRAP
+};
+
+
 CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, CK_ATTRIBUTE_PTR pTemplate, CK_ULONG ulCount)
 {
     struct session_state *state;
@@ -419,33 +425,36 @@ CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, 
         return CKR_SESSION_HANDLE_INVALID;
     }
     
-    if (!soft_token->logged()) {
-        return CKR_USER_NOT_LOGGED_IN;
-    }  
-    
+   
     st_logf(" input ");
     print_attributes(pTemplate, ulCount);
 
     auto attrs = soft_token->attributes(hObject);
     
     for (i = 0; i < ulCount; i++) {
-            auto it = attrs.find(pTemplate[i].type);
-            
-            if (it != attrs.end())
-            {
-                it->second.apply(pTemplate[i]);
+        if (public_attributes.find(pTemplate[i].type) == public_attributes.end()) {
+            if (!soft_token->logged()) {
+                return CKR_USER_NOT_LOGGED_IN;
+            }              
+        }
+        
+        auto it = attrs.find(pTemplate[i].type);
+        
+        if (it != attrs.end())
+        {
+            it->second.apply(pTemplate[i]);
+        }
+        
+        if (pTemplate[i].type == CKA_VALUE) {
+            const auto data = soft_token->read(hObject);
+            if (pTemplate[i].pValue != NULL_PTR) {
+                memcpy(pTemplate[i].pValue, data.c_str(), data.size());
             }
-            
-            if (pTemplate[i].type == CKA_VALUE) {
-                const auto data = soft_token->read(hObject);
-                if (pTemplate[i].pValue != NULL_PTR) {
-                    memcpy(pTemplate[i].pValue, data.c_str(), data.size());
-                }
-                pTemplate[i].ulValueLen = data.size();
-            }
-            else if (it == attrs.end()) {
-                pTemplate[i].ulValueLen = (CK_ULONG)-1;
-            }
+            pTemplate[i].ulValueLen = data.size();
+        }
+        else if (it == attrs.end()) {
+            pTemplate[i].ulValueLen = (CK_ULONG)-1;
+        }
     }
     
     st_logf(" output ");
@@ -474,6 +483,149 @@ CK_RV C_Login(CK_SESSION_HANDLE hSession, CK_USER_TYPE userType, CK_UTF8CHAR_PTR
     }
 }
 
+CK_RV C_SignInit(CK_SESSION_HANDLE hSession, CK_MECHANISM_PTR pMechanism, CK_OBJECT_HANDLE hKey)
+{
+    st_logf("SignInit\n");
+    
+    
+    auto session = session_t::find(hSession);
+    if (session == session_t::end()) {
+        return CKR_SESSION_HANDLE_INVALID;
+    }
+    
+    if (!soft_token->logged()) {
+        return CKR_USER_NOT_LOGGED_IN;
+    }  
+    
+    const CK_BBOOL bool_true = CK_TRUE;
+    
+    if (!soft_token->check(hKey, {create_object(CKA_SIGN, bool_true)})) {
+        return CKR_ARGUMENTS_BAD;
+    }
+    
+    session->sign_key = hKey;
+    
+    session->sign_mechanism.mechanism = pMechanism->mechanism;
+    session->sign_mechanism.ulParameterLen = pMechanism->ulParameterLen;
+    memcpy(session->sign_mechanism.pParameter, pMechanism->pParameter, pMechanism->ulParameterLen);
+    
+    return CKR_OK;
+}
+
+#include <openssl/err.h>
+#include <openssl/evp.h>
+#include <openssl/pem.h>
+#include <openssl/rand.h>
+#include <openssl/x509.h>
+
+CK_RV C_Sign(CK_SESSION_HANDLE hSession,
+       CK_BYTE_PTR pData,
+       CK_ULONG ulDataLen,
+       CK_BYTE_PTR pSignature,
+       CK_ULONG_PTR pulSignatureLen)
+{
+    st_logf("Sign\n");
+    
+    struct session_state *state;
+    struct st_object *o;
+    void *buffer = NULL;
+    CK_RV ret;
+    RSA *rsa;
+    int padding, len, buffer_len, padding_len;
+
+    auto session = session_t::find(hSession);
+    if (session == session_t::end()) {
+        return CKR_SESSION_HANDLE_INVALID;
+    }
+    
+    if (!soft_token->logged()) {
+        return CKR_USER_NOT_LOGGED_IN;
+    }  
+
+//     if (state->sign_object == -1)
+//     return CKR_ARGUMENTS_BAD;
+
+    const std::string str = soft_token->read(session->sign_key);
+    std::vector<char> keydata(str.begin(), str.end());
+    FILE* file = ::fmemopen(keydata.data(), keydata.size(), "r");
+
+    if (EVP_PKEY *pkey = PEM_read_PrivateKey(file, NULL, NULL, NULL)) {
+        rsa = pkey->pkey.rsa;
+        
+        if (rsa == NULL) return CKR_ARGUMENTS_BAD;
+        
+        //RSA_blinding_off(rsa); /* XXX RAND is broken while running in mozilla ? */
+        
+        int buffer_len = RSA_size(rsa);
+        
+        buffer = malloc(buffer_len);
+        if (buffer == NULL) {
+            ret = CKR_DEVICE_MEMORY;
+//             goto out;
+        }
+        
+        switch(session->sign_mechanism.mechanism) {
+        case CKM_RSA_PKCS:
+            padding = RSA_PKCS1_PADDING;
+            padding_len = RSA_PKCS1_PADDING_SIZE;
+            break;
+        case CKM_RSA_X_509:
+            padding = RSA_NO_PADDING;
+            padding_len = 0;
+            break;
+        default:
+            ret = CKR_FUNCTION_NOT_SUPPORTED;
+//             goto out;
+        }
+        
+        if (buffer_len < ulDataLen + padding_len) {
+            ret = CKR_ARGUMENTS_BAD;
+//             goto out;
+        }
+        
+        if (pulSignatureLen == NULL) {
+            st_logf("signature len NULL\n");
+            ret = CKR_ARGUMENTS_BAD;
+//             goto out;
+        }
+
+        if (pData == NULL_PTR) {
+            st_logf("data NULL\n");
+            ret = CKR_ARGUMENTS_BAD;
+//             goto out;
+        }
+
+        len = RSA_private_encrypt(ulDataLen, pData, buffer, rsa, padding);
+        st_logf("private encrypt done\n");
+        if (len <= 0) {
+            ret = CKR_DEVICE_ERROR;
+//             goto out;
+        }
+        if (len > buffer_len)
+            abort();
+        
+        if (pSignature != NULL_PTR)
+        memcpy(pSignature, buffer, len);
+        *pulSignatureLen = len;
+
+        ret = CKR_OK;
+    }
+    
+    ::fclose(file);
+
+
+
+
+
+
+
+//  out:
+//     if (buffer) {
+//         memset(buffer, 0, buffer_len);
+//         free(buffer);
+//     }
+    return ret;
+}
 
 CK_FUNCTION_LIST funcs = {
     { 2, 11 },
@@ -519,8 +671,8 @@ CK_FUNCTION_LIST funcs = {
     (void *)func_t<26>::not_supported, /* C_DigestUpdate */
     (void *)func_t<27>::not_supported, /* C_DigestKey */
     (void *)func_t<28>::not_supported, /* C_DigestFinal */
-        (void *)func_t<29>::not_supported, //C_SignInit,
-        (void *)func_t<30>::not_supported, //C_Sign,
+    C_SignInit,
+    C_Sign,
         (void *)func_t<31>::not_supported, //C_SignUpdate,
         (void *)func_t<32>::not_supported, //C_SignFinal,
     (void *)func_t<33>::not_supported, /* C_SignRecoverInit */
