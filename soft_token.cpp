@@ -496,6 +496,11 @@ Attributes soft_token_t::attributes(CK_OBJECT_HANDLE id) const
     return Attributes();
 }
 
+bool soft_token_t::has_key(CK_OBJECT_HANDLE id) const
+{
+    return p_->objects.find(id) != p_->objects.end();
+}
+
 bool soft_token_t::check(CK_OBJECT_HANDLE id, const Attributes& attrs) const
 {
     auto it = p_->objects.find(id);
@@ -512,6 +517,81 @@ std::string soft_token_t::read(CK_OBJECT_HANDLE id) const
     }
 
     return std::string();
+}
+
+std::vector<unsigned char> soft_token_t::sign(CK_OBJECT_HANDLE id, CK_MECHANISM_TYPE type, CK_BYTE_PTR pData, CK_ULONG ulDataLen) const
+{
+    auto it = p_->objects.find(id);
+    
+    if (it == p_->objects.end()) throw std::runtime_error("err");
+    
+    FILE* file = ::fopen(it->second[AttrFullpath].to_string().c_str(), "r");    
+    
+    if (EVP_PKEY *pkey = PEM_read_PrivateKey(file, NULL, NULL, NULL)) {
+        if (pkey->pkey.rsa == NULL) {
+//             return CKR_ARGUMENTS_BAD;
+            throw std::runtime_error("err");
+        }
+        
+        //RSA_blinding_off(rsa); /* XXX RAND is broken while running in mozilla ? */
+        
+        std::vector<unsigned char> buffer(RSA_size(pkey->pkey.rsa));
+        
+        int padding, padding_len;
+        
+        std::cout << "1" << std::endl;
+        
+        switch(type) {
+        case CKM_RSA_PKCS:
+            padding = RSA_PKCS1_PADDING;
+            padding_len = RSA_PKCS1_PADDING_SIZE;
+            break;
+        case CKM_RSA_X_509:
+            padding = RSA_NO_PADDING;
+            padding_len = 0;
+            break;
+        default:
+            throw std::runtime_error("err");
+//             ret = CKR_FUNCTION_NOT_SUPPORTED;
+//             goto out;
+        }
+        
+        std::cout << "2" << std::endl;
+        
+        if (pData == NULL_PTR) {
+            throw std::runtime_error("err");
+//             st_logf("data NULL\n");
+//             ret = CKR_ARGUMENTS_BAD;
+//             goto out;
+        }
+
+        std::cout << "3" << std::endl;
+        
+        auto len = RSA_private_encrypt(ulDataLen, pData, buffer.data(), pkey->pkey.rsa, padding);
+        
+        std::cout << "4" << std::endl;
+        
+        st_logf("private encrypt done\n");
+        if (len <= 0) {
+            throw std::runtime_error("err");
+//             ret = CKR_DEVICE_ERROR;
+//             goto out;
+        }
+        std::cout << "5" << std::endl;
+        if (len > buffer.size()) {
+            abort();
+        }
+        
+        std::cout << "6" << std::endl;
+        
+        return buffer;
+    }
+    
+    std::cout << "7" << std::endl;
+    ::fclose(file);
+    
+    std::cout << "8" << std::endl;
+    return std::vector<unsigned char>();
 }
 
 

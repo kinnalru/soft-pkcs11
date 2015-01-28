@@ -497,6 +497,10 @@ CK_RV C_SignInit(CK_SESSION_HANDLE hSession, CK_MECHANISM_PTR pMechanism, CK_OBJ
         return CKR_USER_NOT_LOGGED_IN;
     }  
     
+    if (!soft_token->has_key(hKey)) {
+        return CKR_KEY_HANDLE_INVALID;
+    }
+    
     const CK_BBOOL bool_true = CK_TRUE;
     
     if (!soft_token->check(hKey, {create_object(CKA_SIGN, bool_true)})) {
@@ -504,19 +508,12 @@ CK_RV C_SignInit(CK_SESSION_HANDLE hSession, CK_MECHANISM_PTR pMechanism, CK_OBJ
     }
     
     session->sign_key = hKey;
-    
     session->sign_mechanism.mechanism = pMechanism->mechanism;
     session->sign_mechanism.ulParameterLen = pMechanism->ulParameterLen;
     memcpy(session->sign_mechanism.pParameter, pMechanism->pParameter, pMechanism->ulParameterLen);
     
     return CKR_OK;
 }
-
-#include <openssl/err.h>
-#include <openssl/evp.h>
-#include <openssl/pem.h>
-#include <openssl/rand.h>
-#include <openssl/x509.h>
 
 CK_RV C_Sign(CK_SESSION_HANDLE hSession,
        CK_BYTE_PTR pData,
@@ -526,13 +523,6 @@ CK_RV C_Sign(CK_SESSION_HANDLE hSession,
 {
     st_logf("Sign\n");
     
-    struct session_state *state;
-    struct st_object *o;
-    void *buffer = NULL;
-    CK_RV ret;
-    RSA *rsa;
-    int padding, len, buffer_len, padding_len;
-
     auto session = session_t::find(hSession);
     if (session == session_t::end()) {
         return CKR_SESSION_HANDLE_INVALID;
@@ -542,89 +532,23 @@ CK_RV C_Sign(CK_SESSION_HANDLE hSession,
         return CKR_USER_NOT_LOGGED_IN;
     }  
 
-//     if (state->sign_object == -1)
-//     return CKR_ARGUMENTS_BAD;
-
-    const std::string str = soft_token->read(session->sign_key);
-    std::vector<char> keydata(str.begin(), str.end());
-    FILE* file = ::fmemopen(keydata.data(), keydata.size(), "r");
-
-    if (EVP_PKEY *pkey = PEM_read_PrivateKey(file, NULL, NULL, NULL)) {
-        rsa = pkey->pkey.rsa;
-        
-        if (rsa == NULL) return CKR_ARGUMENTS_BAD;
-        
-        //RSA_blinding_off(rsa); /* XXX RAND is broken while running in mozilla ? */
-        
-        int buffer_len = RSA_size(rsa);
-        
-        buffer = malloc(buffer_len);
-        if (buffer == NULL) {
-            ret = CKR_DEVICE_MEMORY;
-//             goto out;
-        }
-        
-        switch(session->sign_mechanism.mechanism) {
-        case CKM_RSA_PKCS:
-            padding = RSA_PKCS1_PADDING;
-            padding_len = RSA_PKCS1_PADDING_SIZE;
-            break;
-        case CKM_RSA_X_509:
-            padding = RSA_NO_PADDING;
-            padding_len = 0;
-            break;
-        default:
-            ret = CKR_FUNCTION_NOT_SUPPORTED;
-//             goto out;
-        }
-        
-        if (buffer_len < ulDataLen + padding_len) {
-            ret = CKR_ARGUMENTS_BAD;
-//             goto out;
-        }
-        
-        if (pulSignatureLen == NULL) {
-            st_logf("signature len NULL\n");
-            ret = CKR_ARGUMENTS_BAD;
-//             goto out;
-        }
-
-        if (pData == NULL_PTR) {
-            st_logf("data NULL\n");
-            ret = CKR_ARGUMENTS_BAD;
-//             goto out;
-        }
-
-        len = RSA_private_encrypt(ulDataLen, pData, buffer, rsa, padding);
-        st_logf("private encrypt done\n");
-        if (len <= 0) {
-            ret = CKR_DEVICE_ERROR;
-//             goto out;
-        }
-        if (len > buffer_len)
-            abort();
-        
-        if (pSignature != NULL_PTR)
-        memcpy(pSignature, buffer, len);
-        *pulSignatureLen = len;
-
-        ret = CKR_OK;
+    if (session->sign_key == soft_token_t::handle_invalid()) {
+        return CKR_OPERATION_NOT_INITIALIZED;
     }
     
-    ::fclose(file);
-
-
-
-
-
-
-
-//  out:
-//     if (buffer) {
-//         memset(buffer, 0, buffer_len);
-//         free(buffer);
-//     }
-    return ret;
+    if (pSignature == NULL_PTR) {
+        return CKR_ARGUMENTS_BAD;
+    }
+    
+    const auto signature = soft_token->sign(session->sign_key, session->sign_mechanism.mechanism, pData, ulDataLen);
+    
+    if (signature.size() > pulSignatureLen) {
+        return CKR_BUFFER_TOO_SMALL;
+    }
+    
+    std::copy(signature.begin(), signature.end(), pSignature);
+    
+    return CKR_OK;
 }
 
 CK_FUNCTION_LIST funcs = {
