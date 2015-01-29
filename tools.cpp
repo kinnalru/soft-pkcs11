@@ -117,6 +117,31 @@ std::pair<int, std::shared_ptr<unsigned char>> read_bignum(void* ssl_bignum)
     return std::make_pair(size, buff);
 }
 
+std::vector<char> read_all(std::shared_ptr<FILE> file)
+{
+    std::vector<char> data;
+
+    if (file) {
+        std::vector<char> portion(4096);
+        while(!::feof(file.get())) {
+            portion.resize(4096);
+            portion.resize(::fread(portion.data(), 1, portion.size(), file.get()));
+            data.insert(data.end(), portion.begin(), portion.end());
+        }
+    }
+    return data;
+}
+
+std::shared_ptr< FILE > read_mem(const std::vector< char >& data)
+{
+    return std::shared_ptr<FILE>(
+        ::fmemopen(const_cast<char*>(data.data()), data.size(), "r"),
+        ::fclose
+    );
+}
+
+
+
 
 
 

@@ -17,5 +17,9 @@ inline std::pair<CK_ATTRIBUTE_TYPE, attribute_t> create_object(CK_ATTRIBUTE_TYPE
     return std::make_pair(type, attribute_t(type, object)); 
 }
 
+std::vector<char> read_all(std::shared_ptr<FILE> file);
+
+std::shared_ptr<FILE> read_mem(const std::vector<char>& data);
+
 #endif
 

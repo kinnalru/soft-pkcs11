@@ -25,13 +25,15 @@ include_directories(${Boost_INCLUDE_DIRS})
 
 set(HEADERS
     soft_token.h
+    storage.h
     tools.h
     attribute.h
 )
 
 set(SOURCES 
     main.cpp
-	tools.cpp
+    tools.cpp
+    storage.cpp
     soft_token.cpp
     attribute.cpp
 )
