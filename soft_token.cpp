@@ -148,10 +148,10 @@ struct to_attributes : std::unary_function<const fs::directory_entry&, Objects::
         }
         if (is_ssh_public_key()(desc)) {
             attrs = ssh_public_key_attrs(desc, attrs);
-            attrs[CKA_OBJECT_ID] = attribute_t(CKA_OBJECT_ID, std::to_string(~desc->id));
-            attrs[CKA_ID] = attribute_t(CKA_ID, std::to_string(~desc->id));
+            attrs[CKA_OBJECT_ID] = attribute_t(CKA_OBJECT_ID, std::to_string(~(desc->id)));
+            attrs[CKA_ID] = attribute_t(CKA_ID, std::to_string(~(desc->id)));
             
-            objects.insert(std::make_pair(~desc->id, attrs));
+            objects.insert(std::make_pair(~(desc->id), attrs));
             
             attrs[CKA_OBJECT_ID] = attribute_t(CKA_OBJECT_ID, std::to_string(desc->id));
             attrs[CKA_ID] = attribute_t(CKA_ID, std::to_string(desc->id));
@@ -255,16 +255,6 @@ struct soft_token_t::Pimpl {
         });
     }
     
-    
-//     
-//     boost::filter_iterator<ObjectsPred, Objects::const_iterator> filter_iterator(ObjectsPred pred) const {
-//         return boost::filter_iterator<ObjectsPred, Objects::const_iterator>(pred, objects.begin(), objects.end());
-//     }
-//     
-//     /// Filter objects by predicate
-//     boost::filter_iterator<ObjectsPred, Objects::iterator> filter_iterator(ObjectsPred pred) {
-//         return boost::filter_iterator<ObjectsPred, Objects::iterator>(pred, objects.begin(), objects.end());
-//     }
 
     /// Filter objects by predicate
     template <typename It = Objects::iterator>
@@ -275,15 +265,6 @@ struct soft_token_t::Pimpl {
         return boost::filter_iterator<ObjectsPred, It>(pred, b, e);
     }
     
-//     /// Filter objects by predicate
-//     template <typename It = Objects::const_iterator>
-//     boost::filter_iterator<ObjectsPred, It> filter_iterator(ObjectsPred pred, It b = It(), It e = It()) const {
-//         if (b == It()) {b = objects.begin();}
-//         if (e == It()) {e = objects.end();}
-//         
-//         return boost::filter_iterator<ObjectsPred, It>(pred, b, e);
-//     }
-    
     /// Filter objects by attributes
     template <typename It = Objects::iterator>
     boost::filter_iterator<ObjectsPred, It> filter_iterator(const Attributes& attrs, It b = It(), It e = It()) {
@@ -292,18 +273,7 @@ struct soft_token_t::Pimpl {
         
         return boost::filter_iterator<ObjectsPred, It>(by_attrs(attrs), b, e);
     }
-    
-//     /// Filter objects by attributes
-//     template <typename It = Objects::const_iterator>
-//     boost::filter_iterator<ObjectsPred, It> filter_iterator(const Attributes& attrs, It b = It(), It e = It()) const {
-//         if (b == It()) {b = objects.begin();}
-//         if (e == It()) {e = objects.end();}
-//         
-//         return boost::filter_iterator<ObjectsPred, It>(find_by_attrs(attrs), b, e);
-//     }
-//     
-    
-    
+   
 
     /// Filter end iterator
     template <typename It = Objects::iterator>
@@ -312,14 +282,6 @@ struct soft_token_t::Pimpl {
         
         return boost::filter_iterator<ObjectsPred, It>(ObjectsPred(), e, e);
     }
-    
-//     /// Filter end iterator
-//     boost::filter_iterator<ObjectsPred, Objects::iterator> filter_end() {
-//         return boost::filter_iterator<ObjectsPred, Objects::iterator>(ObjectsPred(), objects.end(), objects.end());
-//     }
-//     
-
-
     
     /// Iterate over transformed(through trans-function) collection
     template<typename Trans, typename It = Objects::const_iterator>
@@ -348,14 +310,6 @@ int read_password (char *buf, int size, int rwflag, void *userdata) {
     return p.size();
 }
 
-
-/*
-bool check_file_is_private_key(const std::string& file) {
-    std::ifstream infile(file);
-    std::string first_line;
-    std::getline(infile, first_line, '\n');
-    return first_line == "-----BEGIN RSA PRIVATE KEY-----";
-}*/
 
 template <typename A>
 bool is_equal(CK_ATTRIBUTE_TYPE type, const A& a1, const A& a2) {
@@ -397,6 +351,7 @@ soft_token_t::soft_token_t(const std::string& rcfile)
         
         auto public_range = p_->objects
             | filtered(by_attrs({create_object(CKA_CLASS, public_key_c)}))
+            | filtered(std::not1(by_attrs({create_object(AttrSshPublic, bool_true)})))
             | filtered([&private_key] (const Objects::value_type& pub_key) mutable {
                 return is_equal(CKA_MODULUS, pub_key, private_key)
                     || pub_key.second.at(CKA_LABEL).to_string() == (private_key.second.at(CKA_LABEL).to_string() + ".pub");
@@ -512,6 +467,9 @@ std::string soft_token_t::read(CK_OBJECT_HANDLE id) const
     auto it = p_->objects.find(id);
     
     if (it != p_->objects.end()) {
+        if (it->second[AttrSshPublic].to_bool()) {
+            return it->second[CKA_VALUE].to_string();
+        }
         std::ifstream t(it->second[AttrFullpath].to_string());
         return std::string((std::istreambuf_iterator<char>(t)), std::istreambuf_iterator<char>());
     }
@@ -701,7 +659,14 @@ Attributes ssh_public_key_attrs(descriptor_p desc, const Attributes& attributes)
     
     if (FILE* converted = ::popen(std::string("ssh-keygen -f " + desc->fullname + " -e -m PKCS8").c_str(), "r")) {
         desc->file = converted;
-        return rsa_public_key_attrs(desc, attributes);
+        std::vector<char> buf(4096*20);
+        buf.resize(fread(buf.data(), 1, buf.size(), desc->file));
+        Attributes attrs = {
+            create_object(CKA_VALUE, std::string(buf.begin(), buf.end())),
+        };
+        ::fseek(desc->file, 0, SEEK_SET); 
+        attrs.insert(attributes.begin(), attributes.end());
+        return rsa_public_key_attrs(desc, attrs);
         ::pclose(converted);
     }
     

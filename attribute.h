@@ -39,8 +39,12 @@ struct attribute_t {
         return &attr_;
     }
     
-    const std::string to_string() const {
+    inline const std::string to_string() const {
         return std::string(reinterpret_cast<char*>(attr_.pValue), attr_.ulValueLen);
+    }
+    
+    inline bool to_bool() const {
+        return *(reinterpret_cast<CK_BBOOL*>(attr_.pValue)) == CK_TRUE;
     }
     
 private:

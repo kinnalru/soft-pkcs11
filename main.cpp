@@ -475,7 +475,7 @@ CK_RV C_Login(CK_SESSION_HANDLE hSession, CK_USER_TYPE userType, CK_UTF8CHAR_PTR
         return CKR_USER_ALREADY_LOGGED_IN;
     }  
 
-    if (soft_token->login(std::string(pPin, ulPinLen))) {
+    if (soft_token->login(std::string(reinterpret_cast<char*>(pPin), ulPinLen))) {
         return CKR_OK;    
     }
     else {
