@@ -28,6 +28,7 @@ enum Attribute : CK_ATTRIBUTE_TYPE {
     AttrFilename = CKA_VENDOR_DEFINED + 1,
     AttrFullpath,
     AttrSshPublic,
+    AttrSshUnpacked,
 };
 
 const CK_BBOOL bool_true = CK_TRUE;
@@ -147,14 +148,21 @@ struct to_attributes : std::unary_function<const fs::directory_entry&, Objects::
             attrs = rsa_public_key_attrs(desc, attrs);
         }
         if (is_ssh_public_key()(desc)) {
+            
             attrs = ssh_public_key_attrs(desc, attrs);
-            attrs[CKA_OBJECT_ID] = attribute_t(CKA_OBJECT_ID, std::to_string(~(desc->id)));
-            attrs[CKA_ID] = attribute_t(CKA_ID, std::to_string(~(desc->id)));
+
+            {
+                //create additional unpacked key
+                attrs[AttrSshUnpacked] = attribute_t(AttrSshUnpacked, bool_true);
+                attrs[CKA_OBJECT_ID] = attribute_t(CKA_OBJECT_ID,  std::to_string(~(desc->id)));
+                attrs[CKA_ID] = attribute_t(CKA_ID,  std::to_string(~(desc->id)));
+                objects.insert(std::make_pair(~(desc->id), attrs));
+            };
             
-            objects.insert(std::make_pair(~(desc->id), attrs));
-            
-            attrs[CKA_OBJECT_ID] = attribute_t(CKA_OBJECT_ID, std::to_string(desc->id));
-            attrs[CKA_ID] = attribute_t(CKA_ID, std::to_string(desc->id));
+            attrs.erase(AttrSshUnpacked);
+            attrs.erase(CKA_VALUE);
+            attrs[CKA_OBJECT_ID] = attribute_t(CKA_OBJECT_ID,  std::to_string(desc->id));
+            attrs[CKA_ID] = attribute_t(CKA_ID,  std::to_string(desc->id));
             attrs[CKA_LABEL] = attribute_t(CKA_LABEL, "SSH " + attrs[CKA_LABEL].to_string());
             attrs[AttrSshPublic] = attribute_t(AttrSshPublic, bool_true);
         }
@@ -175,7 +183,7 @@ struct by_attrs : std::unary_function<const Objects::value_type&, bool> {
     
     bool operator()(const Objects::value_type& object_pair) const {
         
-        st_logf("SEARCH FOR ID: %lu\n", object_pair.first);        
+        st_logf("SEARCH FOR ID: %s %s\n", std::to_string(object_pair.first).c_str(), object_pair.second[CKA_LABEL].to_string().c_str());
         
         for (auto it = attrs.begin(); it != attrs.end(); ++it) {
             const Attributes& object_attrs = object_pair.second;
@@ -351,7 +359,6 @@ soft_token_t::soft_token_t(const std::string& rcfile)
         
         auto public_range = p_->objects
             | filtered(by_attrs({create_object(CKA_CLASS, public_key_c)}))
-            | filtered(std::not1(by_attrs({create_object(AttrSshPublic, bool_true)})))
             | filtered([&private_key] (const Objects::value_type& pub_key) mutable {
                 return is_equal(CKA_MODULUS, pub_key, private_key)
                     || pub_key.second.at(CKA_LABEL).to_string() == (private_key.second.at(CKA_LABEL).to_string() + ".pub");
@@ -467,7 +474,7 @@ std::string soft_token_t::read(CK_OBJECT_HANDLE id) const
     auto it = p_->objects.find(id);
     
     if (it != p_->objects.end()) {
-        if (it->second[AttrSshPublic].to_bool()) {
+        if (it->second[AttrSshUnpacked].to_bool()) {
             return it->second[CKA_VALUE].to_string();
         }
         std::ifstream t(it->second[AttrFullpath].to_string());
@@ -653,26 +660,53 @@ Attributes rsa_public_key_attrs(descriptor_p desc, const Attributes& attributes)
     return attrs;  
 }
 
+std::vector<char> read_all(std::shared_ptr<FILE> file) {
+    std::vector<char> data;
+    
+    if (!file) return data;
+    
+    std::vector<char> portion(4096);
+    
+    while(!::feof(file.get())) {
+        portion.resize(4096);
+        portion.resize(::fread(portion.data(), 1, portion.size(), file.get()));
+        data.insert(data.end(), portion.begin(), portion.end());
+    }
+    return data;
+}
+
+std::shared_ptr<FILE> read_mem(const std::vector<char>& data) {
+    
+    return std::shared_ptr<FILE>(
+        ::fmemopen(const_cast<char*>(data.data()), data.size(), "r"),
+        ::fclose
+    );
+}
+
 Attributes ssh_public_key_attrs(descriptor_p desc, const Attributes& attributes)
 {
-    FILE* reserve = desc->file;
+    Attributes attrs;
     
-    if (FILE* converted = ::popen(std::string("ssh-keygen -f " + desc->fullname + " -e -m PKCS8").c_str(), "r")) {
-        desc->file = converted;
-        std::vector<char> buf(4096*20);
-        buf.resize(fread(buf.data(), 1, buf.size(), desc->file));
-        Attributes attrs = {
-            create_object(CKA_VALUE, std::string(buf.begin(), buf.end())),
-        };
-        ::fseek(desc->file, 0, SEEK_SET); 
-        attrs.insert(attributes.begin(), attributes.end());
-        return rsa_public_key_attrs(desc, attrs);
-        ::pclose(converted);
+    std::shared_ptr<FILE> file(
+        ::popen(std::string("ssh-keygen -f " + desc->fullname + " -e -m PKCS8").c_str(), "r"),
+        ::pclose);
+    
+    if (file) {
+        const std::vector<char> data = read_all(file);
+        std::shared_ptr<FILE> mem = read_mem(data);
+
+        FILE* reserve = desc->file;        
+        desc->file = mem.get();
+        attrs = rsa_public_key_attrs(desc, attributes);
+        desc->file = reserve;
+
+        attrs.insert(create_object(CKA_VALUE, data));        
     }
     
-    desc->file = reserve;
+    //keys in attrs takes precedence with attributes
+    attrs.insert(attributes.begin(), attributes.end());
     
-    return attributes;  
+    return attrs;  
 }
 
 Attributes private_key_attrs(descriptor_p desc, const Attributes& attributes)

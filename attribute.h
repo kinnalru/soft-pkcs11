@@ -2,6 +2,7 @@
 #define ST_ATTRIBUTE_H
 
 #include <memory>
+#include <vector>
 
 #include "pkcs11/pkcs11u.h"
 #include "pkcs11/pkcs11.h"
@@ -17,6 +18,7 @@ struct attribute_t {
     attribute_t(CK_ATTRIBUTE_TYPE type, CK_VOID_PTR value, CK_ULONG size);
     
     attribute_t(CK_ATTRIBUTE_TYPE type, const std::string& string);
+    attribute_t(CK_ATTRIBUTE_TYPE type, const std::vector<char>& bytes);
     
     template <typename T>
     attribute_t(CK_ATTRIBUTE_TYPE type, const T& object) {

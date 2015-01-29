@@ -418,7 +418,7 @@ CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, 
     CK_RV ret;
     int j;
 
-    st_logf("** GetAttributeValue: %lu ulCount: %d\n", hObject, ulCount);
+    st_logf("** GetAttributeValue: %lu %s ulCount: %d\n", hObject, soft_token->attributes(hObject)[CKA_LABEL].to_string().c_str(), ulCount);
     
     auto session = session_t::find(hSession);
     if (session == session_t::end()) {

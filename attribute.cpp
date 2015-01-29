@@ -32,6 +32,17 @@ attribute_t::attribute_t(CK_ATTRIBUTE_TYPE type, const std::string& string) {
     this->operator=(other);
 }
 
+attribute_t::attribute_t(CK_ATTRIBUTE_TYPE type, const std::vector<char>& bytes)
+{
+    CK_ATTRIBUTE other;
+    other.type = type;
+    other.pValue = const_cast<char*>(bytes.data());
+    other.ulValueLen = bytes.size();
+    
+    this->operator=(other);
+}
+
+
 bool attribute_t::operator==(const attribute_t& other) const
 {
     if (other.attr_.type != attr_.type) return false;
