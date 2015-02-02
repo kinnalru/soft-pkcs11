@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <error.h>
+#include <termios.h>
 
 #include <iostream>
 
@@ -138,6 +139,28 @@ std::shared_ptr< FILE > read_mem(const std::vector< char >& data)
         ::fmemopen(const_cast<char*>(data.data()), data.size(), "r"),
         ::fclose
     );
+}
+
+void set_stdin_echo(bool enable)
+{
+    struct termios tty;
+    tcgetattr(STDIN_FILENO, &tty);
+    if( !enable )
+        tty.c_lflag &= ~ECHO;
+    else
+        tty.c_lflag |= ECHO;
+
+    (void) tcsetattr(STDIN_FILENO, TCSANOW, &tty);
+}
+
+std::string read_password()
+{
+    std::cout << "Input PIN:" << std::endl;
+    set_stdin_echo(false);
+    std::string pass;
+    std::cin >> pass;
+    set_stdin_echo(true);
+    return pass;
 }
 
 

@@ -284,6 +284,13 @@ CK_RV C_OpenSession(CK_SLOT_ID slotID,
     
     auto session = session_t::create();
     *phSession = *session;
+    
+    if (std::getenv("SOFTPKCS11_FORCE_PIN")) {
+        std::string pin = read_password();
+        if (!soft_token->login(pin)) {
+            return CKR_PIN_INCORRECT;
+        }
+    }
 
     return CKR_OK;
 }
@@ -307,6 +314,10 @@ CK_RV C_FindObjectsInit(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, 
     if (session == session_t::end()) {
         return CKR_SESSION_HANDLE_INVALID;
     }
+    
+    if (!soft_token->logged()) {
+        return CKR_USER_NOT_LOGGED_IN;
+    }  
     
     print_attributes(pTemplate, ulCount);
     
@@ -472,6 +483,9 @@ CK_RV C_Login(CK_SESSION_HANDLE hSession, CK_USER_TYPE userType, CK_UTF8CHAR_PTR
     }
     
     if (soft_token->logged()) {
+        if (std::getenv("SOFTPKCS11_FORCE_PIN")) {
+            return CKR_OK;
+        }
         return CKR_USER_ALREADY_LOGGED_IN;
     }  
 

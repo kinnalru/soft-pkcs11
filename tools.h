@@ -21,5 +21,7 @@ std::vector<char> read_all(std::shared_ptr<FILE> file);
 
 std::shared_ptr<FILE> read_mem(const std::vector<char>& data);
 
+std::string read_password();
+
 #endif
 
