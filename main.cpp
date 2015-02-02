@@ -223,8 +223,15 @@ CK_RV C_GetTokenInfo(CK_SLOT_ID slotID, CK_TOKEN_INFO_PTR pInfo)
       "471131");
     pInfo->flags = CKF_TOKEN_INITIALIZED | CKF_USER_PIN_INITIALIZED;
 
-//     if (!soft_token->logged_in())
-    pInfo->flags |= CKF_LOGIN_REQUIRED;
+    if (!soft_token->logged() && std::getenv("SOFTPKCS11_FORCE_PIN")) {
+        std::string pin = read_password();
+        if (!soft_token->login(pin)) {
+            return CKR_PIN_INCORRECT;
+        }
+    }
+    
+    if (!soft_token->logged())
+      pInfo->flags |= CKF_LOGIN_REQUIRED;
 
     pInfo->ulMaxSessionCount = 5;
     pInfo->ulSessionCount = session_t::count();
@@ -285,13 +292,6 @@ CK_RV C_OpenSession(CK_SLOT_ID slotID,
     auto session = session_t::create();
     *phSession = *session;
     
-    if (std::getenv("SOFTPKCS11_FORCE_PIN")) {
-        std::string pin = read_password();
-        if (!soft_token->login(pin)) {
-            return CKR_PIN_INCORRECT;
-        }
-    }
-
     return CKR_OK;
 }
 
