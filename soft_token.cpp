@@ -504,7 +504,6 @@ std::vector<unsigned char> soft_token_t::sign(CK_OBJECT_HANDLE id, CK_MECHANISM_
         
         int padding, padding_len;
         
-        std::cout << "1" << std::endl;
         
         switch(type) {
         case CKM_RSA_PKCS:
@@ -521,7 +520,6 @@ std::vector<unsigned char> soft_token_t::sign(CK_OBJECT_HANDLE id, CK_MECHANISM_
 //             goto out;
         }
         
-        std::cout << "2" << std::endl;
         
         if (pData == NULL_PTR) {
             throw std::runtime_error("err");
@@ -530,11 +528,9 @@ std::vector<unsigned char> soft_token_t::sign(CK_OBJECT_HANDLE id, CK_MECHANISM_
 //             goto out;
         }
 
-        std::cout << "3" << std::endl;
         
         auto len = RSA_private_encrypt(ulDataLen, pData, buffer.data(), pkey->pkey.rsa, padding);
         
-        std::cout << "4" << std::endl;
         
         st_logf("private encrypt done\n");
         if (len <= 0) {
@@ -542,20 +538,16 @@ std::vector<unsigned char> soft_token_t::sign(CK_OBJECT_HANDLE id, CK_MECHANISM_
 //             ret = CKR_DEVICE_ERROR;
 //             goto out;
         }
-        std::cout << "5" << std::endl;
         if (len > buffer.size()) {
             abort();
         }
         
-        std::cout << "6" << std::endl;
         
         return buffer;
     }
     
-    std::cout << "7" << std::endl;
     ::fclose(file);
     
-    std::cout << "8" << std::endl;
     return std::vector<unsigned char>();
 }
 

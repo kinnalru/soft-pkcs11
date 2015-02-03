@@ -225,10 +225,10 @@ CK_RV C_GetTokenInfo(CK_SLOT_ID slotID, CK_TOKEN_INFO_PTR pInfo)
     pInfo->flags = CKF_TOKEN_INITIALIZED | CKF_USER_PIN_INITIALIZED;
 
     if (!soft_token->logged() && std::getenv("SOFTPKCS11_FORCE_PIN")) {
-        std::string pin = read_password();
-        if (!soft_token->login(pin)) {
-            return CKR_PIN_INCORRECT;
-        }
+//         std::string pin = read_password();
+//         if (!soft_token->login(pin)) {
+//             return CKR_PIN_INCORRECT;
+//         }
     }
     
     if (!soft_token->logged())
