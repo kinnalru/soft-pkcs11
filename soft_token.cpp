@@ -49,12 +49,6 @@ Attributes private_key_attrs(descriptor_p desc, const Attributes& attributes = A
 Attributes rsa_private_key_attrs(descriptor_p desc, const Attributes& attributes = Attributes());
 Attributes secret_key_attrs(descriptor_p desc,  const Attributes& attributes = Attributes());
 
-struct is_object : std::unary_function<const fs::directory_entry&, bool> {
-    bool operator() (const fs::directory_entry& d) const {
-        return fs::is_regular_file(d.status());
-    }
-};
-
 struct to_object_id : std::unary_function<const fs::directory_entry&, CK_OBJECT_HANDLE> {
     CK_OBJECT_HANDLE operator() (const fs::directory_entry& d) const {
         return static_cast<CK_OBJECT_HANDLE>(hash(d.path().filename().c_str()));
@@ -82,21 +76,6 @@ struct descriptor_t {
         id = to_object_id()(filename);
         file = ::fmemopen(data.data(), data.size(), "r");
     }
-  
-//     descriptor_t(const fs::directory_entry& d)
-//         : fullname(d.path().string())
-//         , filename(d.path().filename().string())
-//     {
-//         std::ifstream stream1(d.path().string());
-//         std::getline(stream1, first_line, '\n');
-//         stream1.seekg (0, stream1.beg);
-//         
-//         std::ifstream stream(d.path().string());
-//         
-//         data = std::vector<char>((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
-//         id = to_object_id()(d);
-//         file = ::fmemopen(data.data(), data.size(), "r");
-//     }
     
     ~descriptor_t() {
         ::fclose(file);
@@ -152,12 +131,7 @@ struct to_attributes : std::unary_function<const fs::directory_entry&, Objects::
     
     Objects::value_type operator() (const item_t& item) {
         descriptor_p desc(new descriptor_t(item));
-//     }
-    
-//     Objects::value_type operator() (const fs::directory_entry& d) {
-        
-//         descriptor_p desc(new descriptor_t(d));
-        
+
         Attributes attrs = {
             create_object(AttrFilename, desc->filename),
             create_object(AttrFullpath, desc->fullname),
@@ -235,9 +209,6 @@ private:
     const Attributes attrs;
 };
 
-typedef boost::filter_iterator<std::function<bool(const fs::directory_entry&)>, fs::directory_iterator> files_iterator;
-typedef boost::transform_iterator<to_object_id, files_iterator> object_ids_iterator;
-
 typedef std::function<bool(const Objects::value_type&)> ObjectsPred;
 
 struct not1 : std::unary_function<const Objects::value_type&, bool> {
@@ -257,21 +228,6 @@ struct soft_token_t::Pimpl {
     Pimpl() {
       config.put("path", "default");
     }
-    
-    /// Iterate over all files in path
-    files_iterator files_begin() const {
-        if (fs::exists(path) && fs::is_directory(path)) {
-            return files_iterator(is_object(), fs::directory_iterator(path));
-        }    
-        
-        return files_end();
-    };
-    
-    /// end-iterator
-    files_iterator files_end() const {
-        return files_iterator(fs::directory_iterator());
-    }
-    
     
     /// Find in objects by predicate
     Objects::const_iterator find(std::function<bool(const Attributes&)> pred) const {
@@ -369,7 +325,6 @@ soft_token_t::soft_token_t(const std::string& rcfile)
     p_->path = p_->config.get<std::string>("path");
 
     st_logf("Config file: %s\n", rcfile.c_str());
-//     st_logf("Path : %s\n", p_->path.c_str());
     
     p_->storage = storage_t::create(p_->config);
 
@@ -379,13 +334,6 @@ soft_token_t::soft_token_t(const std::string& rcfile)
         const auto a = p_->objects.insert(convert(item)).first;
         st_logf("Finded obejcts: %s %lu\n", item.filename.c_str(), a->first);
     }
-    
-//     const auto end = p_->files_end();
-//     to_attributes convert(p_->objects);
-//     for(auto it = p_->files_begin(); it != end; ++it ) {
-//         const auto a = p_->objects.insert(convert(*it)).first;
-// //         st_logf("Finded obejcts: %s %lu\n", it->path().filename().c_str(), a->first);
-//     }
     
     const CK_OBJECT_CLASS public_key_c = CKO_PUBLIC_KEY;
     const CK_OBJECT_CLASS private_key_c = CKO_PRIVATE_KEY;
@@ -416,9 +364,7 @@ soft_token_t::soft_token_t(const std::string& rcfile)
 
 soft_token_t::~soft_token_t()
 {
-//     std::cerr << "DESTRUCTOR 1" << std::endl;
     p_.reset();
-//     std::cerr << "DESTRUCTOR 2" << std::endl;
 }
 
 bool soft_token_t::logged() const
@@ -513,10 +459,8 @@ std::string soft_token_t::read(CK_OBJECT_HANDLE id) const
             return it->second[CKA_VALUE].to_string();
         }
         
-        item_t item = p_->storage->read(it->second[AttrFilename].to_string());
+        const item_t item = p_->storage->read(it->second[AttrFilename].to_string());
         return std::string(item.data.begin(), item.data.end());
-//         std::ifstream t(it->second[AttrFullpath].to_string());
-//         return std::string((std::istreambuf_iterator<char>(t)), std::istreambuf_iterator<char>());
     }
 
     return std::string();

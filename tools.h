@@ -23,5 +23,7 @@ std::shared_ptr<FILE> read_mem(const std::vector<char>& data);
 
 std::string read_password();
 
+std::vector<char> piped(const std::string& cmd, const std::vector<char>& input);
+
 #endif
 
