@@ -153,6 +153,7 @@ extern CK_FUNCTION_LIST funcs;
 
 CK_RV C_GetFunctionList(CK_FUNCTION_LIST_PTR_PTR ppFunctionList)
 {
+    st_logf("C_GetFunctionList\n");
     *ppFunctionList = &funcs;
     return CKR_OK;
 }
@@ -557,11 +558,42 @@ CK_RV C_Sign(CK_SESSION_HANDLE hSession,
     const auto signature = soft_token->sign(session->sign_key, session->sign_mechanism.mechanism, pData, ulDataLen);
     
     if (signature.size() > pulSignatureLen) {
+        st_logf("Sign error: CKR_BUFFER_TOO_SMALL\n");
         return CKR_BUFFER_TOO_SMALL;
     }
     
+    st_logf("signature buffer: size=%d\n", *pulSignatureLen);
+
     std::copy(signature.begin(), signature.end(), pSignature);
+    *pulSignatureLen = signature.size();
     
+    st_logf("Sign ok: CKR_OK size=%d\n", *pulSignatureLen);
+    return CKR_OK;
+}
+
+
+CK_RV C_SignUpdate(CK_SESSION_HANDLE hSession, CK_BYTE_PTR pPart, CK_ULONG ulPartLen)
+{
+    st_logf("SignUpdate\n");
+
+    auto session = session_t::find(hSession);
+    if (session == session_t::end()) {
+        return CKR_SESSION_HANDLE_INVALID;
+    }
+
+    return CKR_FUNCTION_NOT_SUPPORTED;
+}
+
+CK_RV C_SignFinal(CK_SESSION_HANDLE hSession, CK_BYTE_PTR pSignature, CK_ULONG_PTR pulSignatureLen)
+{
+    st_logf("C_SignFinal\n");
+
+    auto session = session_t::find(hSession);
+    if (session == session_t::end()) {
+        return CKR_SESSION_HANDLE_INVALID;
+    }
+
+    st_logf("Sign ok: CKR_OK size=%d\n", *pulSignatureLen);
     return CKR_OK;
 }
 
@@ -611,8 +643,8 @@ CK_FUNCTION_LIST funcs = {
     (void *)func_t<28>::not_supported, /* C_DigestFinal */
     C_SignInit,
     C_Sign,
-        (void *)func_t<31>::not_supported, //C_SignUpdate,
-        (void *)func_t<32>::not_supported, //C_SignFinal,
+    C_SignUpdate,
+    C_SignFinal,
     (void *)func_t<33>::not_supported, /* C_SignRecoverInit */
     (void *)func_t<34>::not_supported, /* C_SignRecover */
         (void *)func_t<35>::not_supported, //C_VerifyInit,
