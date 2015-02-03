@@ -225,10 +225,10 @@ CK_RV C_GetTokenInfo(CK_SLOT_ID slotID, CK_TOKEN_INFO_PTR pInfo)
     pInfo->flags = CKF_TOKEN_INITIALIZED | CKF_USER_PIN_INITIALIZED;
 
     if (!soft_token->logged() && std::getenv("SOFTPKCS11_FORCE_PIN")) {
-//         std::string pin = read_password();
-//         if (!soft_token->login(pin)) {
-//             return CKR_PIN_INCORRECT;
-//         }
+        std::string pin = read_password();
+        if (!soft_token->login(pin)) {
+            return CKR_PIN_INCORRECT;
+        }
     }
     
     if (!soft_token->logged())
@@ -558,16 +558,12 @@ CK_RV C_Sign(CK_SESSION_HANDLE hSession,
     const auto signature = soft_token->sign(session->sign_key, session->sign_mechanism.mechanism, pData, ulDataLen);
     
     if (signature.size() > pulSignatureLen) {
-        st_logf("Sign error: CKR_BUFFER_TOO_SMALL\n");
         return CKR_BUFFER_TOO_SMALL;
     }
     
-    st_logf("signature buffer: size=%d\n", *pulSignatureLen);
-
     std::copy(signature.begin(), signature.end(), pSignature);
     *pulSignatureLen = signature.size();
     
-    st_logf("Sign ok: CKR_OK size=%d\n", *pulSignatureLen);
     return CKR_OK;
 }
 

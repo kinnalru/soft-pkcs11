@@ -22,6 +22,7 @@
 #include <boost/filesystem.hpp>
 
 #include "tools.h"
+#include "storage.h"
 #include "soft_token.h"
 
 enum Attribute : CK_ATTRIBUTE_TYPE {
@@ -58,25 +59,44 @@ struct to_object_id : std::unary_function<const fs::directory_entry&, CK_OBJECT_
     CK_OBJECT_HANDLE operator() (const fs::directory_entry& d) const {
         return static_cast<CK_OBJECT_HANDLE>(hash(d.path().filename().c_str()));
     }
+    CK_OBJECT_HANDLE operator() (const std::string& filename) const {
+        return static_cast<CK_OBJECT_HANDLE>(hash(filename));
+    }
 private:
     std::hash<std::string> hash;
 };
 
 struct descriptor_t {
-    descriptor_t(const fs::directory_entry& d)
-        : fullname(d.path().string())
-        , filename(d.path().filename().string())
+  
+    descriptor_t(const item_t& item)
+        : fullname(item.fullname)
+        , filename(item.filename)
     {
-        std::ifstream stream1(d.path().string());
-        std::getline(stream1, first_line, '\n');
-        stream1.seekg (0, stream1.beg);
+        const std::string str(item.data.begin(), item.data.end());
+        std::stringstream stream(str);
         
-        std::ifstream stream(d.path().string());
+        std::getline(stream, first_line, '\n');
+        stream.seekg (0, stream.beg);
         
-        data = std::vector<char>((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
-        id = to_object_id()(d);
+        data = item.data;
+        id = to_object_id()(filename);
         file = ::fmemopen(data.data(), data.size(), "r");
     }
+  
+//     descriptor_t(const fs::directory_entry& d)
+//         : fullname(d.path().string())
+//         , filename(d.path().filename().string())
+//     {
+//         std::ifstream stream1(d.path().string());
+//         std::getline(stream1, first_line, '\n');
+//         stream1.seekg (0, stream1.beg);
+//         
+//         std::ifstream stream(d.path().string());
+//         
+//         data = std::vector<char>((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+//         id = to_object_id()(d);
+//         file = ::fmemopen(data.data(), data.size(), "r");
+//     }
     
     ~descriptor_t() {
         ::fclose(file);
@@ -130,9 +150,13 @@ struct to_attributes : std::unary_function<const fs::directory_entry&, Objects::
         
     }
     
-    Objects::value_type operator() (const fs::directory_entry& d) {
+    Objects::value_type operator() (const item_t& item) {
+        descriptor_p desc(new descriptor_t(item));
+//     }
+    
+//     Objects::value_type operator() (const fs::directory_entry& d) {
         
-        descriptor_p desc(new descriptor_t(d));
+//         descriptor_p desc(new descriptor_t(d));
         
         Attributes attrs = {
             create_object(AttrFilename, desc->filename),
@@ -309,6 +333,8 @@ struct soft_token_t::Pimpl {
     std::string path;
     Objects objects;
     std::string pin;
+    
+    std::shared_ptr<storage_t> storage;
 };
 
 int read_password (char *buf, int size, int rwflag, void *userdata) {
@@ -343,14 +369,23 @@ soft_token_t::soft_token_t(const std::string& rcfile)
     p_->path = p_->config.get<std::string>("path");
 
     st_logf("Config file: %s\n", rcfile.c_str());
-    st_logf("Path : %s\n", p_->path.c_str());
+//     st_logf("Path : %s\n", p_->path.c_str());
     
-    const auto end = p_->files_end();
+    p_->storage = storage_t::create(p_->config);
+
+    
     to_attributes convert(p_->objects);
-    for(auto it = p_->files_begin(); it != end; ++it ) {
-        const auto a = p_->objects.insert(convert(*it)).first;
-//         st_logf("Finded obejcts: %s %lu\n", it->path().filename().c_str(), a->first);
+    for(auto item: p_->storage->items()) {
+        const auto a = p_->objects.insert(convert(item)).first;
+        st_logf("Finded obejcts: %s %lu\n", item.filename.c_str(), a->first);
     }
+    
+//     const auto end = p_->files_end();
+//     to_attributes convert(p_->objects);
+//     for(auto it = p_->files_begin(); it != end; ++it ) {
+//         const auto a = p_->objects.insert(convert(*it)).first;
+// //         st_logf("Finded obejcts: %s %lu\n", it->path().filename().c_str(), a->first);
+//     }
     
     const CK_OBJECT_CLASS public_key_c = CKO_PUBLIC_KEY;
     const CK_OBJECT_CLASS private_key_c = CKO_PRIVATE_KEY;
@@ -477,8 +512,11 @@ std::string soft_token_t::read(CK_OBJECT_HANDLE id) const
         if (it->second[AttrSshUnpacked].to_bool()) {
             return it->second[CKA_VALUE].to_string();
         }
-        std::ifstream t(it->second[AttrFullpath].to_string());
-        return std::string((std::istreambuf_iterator<char>(t)), std::istreambuf_iterator<char>());
+        
+        item_t item = p_->storage->read(it->second[AttrFilename].to_string());
+        return std::string(item.data.begin(), item.data.end());
+//         std::ifstream t(it->second[AttrFullpath].to_string());
+//         return std::string((std::istreambuf_iterator<char>(t)), std::istreambuf_iterator<char>());
     }
 
     return std::string();

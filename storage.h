@@ -10,11 +10,13 @@
 #include "tools.h"
 
 struct item_t {
-    item_t(const std::string& fn, const std::vector<char>& d)
-        : filename(fn)
+    item_t(const std::string& full, const std::string& fn, const std::vector<char>& d)
+        : fullname(full)
+        , filename(fn)
         , data(d)
     {}
     
+    const std::string fullname; //FIXME HACK remove
     const std::string filename;
     const std::vector<char> data;
 };
@@ -30,9 +32,11 @@ struct storage_t {
     
 
 protected:
-    storage_t(){};
+    storage_t(const boost::property_tree::ptree& c) : config_(c){};
     storage_t(const storage_t& other) = delete;
     storage_t& operator=(const storage_t& other) = delete;
+    
+    boost::property_tree::ptree config_;
 };
 
 
