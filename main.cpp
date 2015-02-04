@@ -93,8 +93,8 @@ extern "C" {
 CK_RV C_Initialize(CK_VOID_PTR a)
 {
     CK_C_INITIALIZE_ARGS_PTR args = reinterpret_cast<CK_C_INITIALIZE_ARGS_PTR>(a);
-    st_logf("Initialize");
-
+    st_logf("Initialize\n");
+    
     std::string rcfile;
     try {
         rcfile = std::string(std::getenv("SOFTPKCS11RC"));

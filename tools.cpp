@@ -11,6 +11,7 @@
 #include <fcntl.h>
 #include <error.h>
 #include <termios.h>
+#include <sys/wait.h>
 
 #include <iostream>
 
@@ -167,70 +168,95 @@ std::string read_password()
 std::vector<char> piped(const std::string& cmd, const std::vector<char>& input) {
     std::vector<char> result;
             
-    int wpipefd[2];
-    int rpipefd[2];
-    int defout, defin;
-    defout = dup(stdout);
-    defin = dup (stdin);
-    if(pipe(wpipefd) < 0){
-            perror("Pipe");
-            exit(EXIT_FAILURE);
+    int fd1[2];
+    int fd2[2];
+    int fd3[2];
+    pid_t pid;
+
+    if ( (pipe(fd1) < 0) || (pipe(fd2) < 0) || (pipe(fd3) < 0) )
+    {
+        throw std::runtime_error("Can't crete pipes for subprocess");
     }
-    if(pipe(rpipefd) < 0){
-            perror("Pipe");
-            exit(EXIT_FAILURE);
+    
+    if ( (pid = fork()) < 0 )
+    {
+        throw std::runtime_error("Can't fork");
     }
-    if(dup2(wpipefd[0], 0) == -1){
-            perror("dup2");
-            exit(EXIT_FAILURE);
-    }
-    if(dup2(rpipefd[1], 1) == -1){
-            perror("dup2");
-            exit(EXIT_FAILURE);
-    }
-    if(fork() == 0){
-            close(defout);
-            close(defin);
-            close(wpipefd[0]);
-            close(wpipefd[1]);
-            close(rpipefd[0]);
-            close(rpipefd[1]);
-            //Call exec here. Use the exec* family of functions according to your need
-    }
-    else{
-            if(dup2(defin, 0) == -1){
-                    perror("dup2");
-                    exit(EXIT_FAILURE);
+    else if (pid == 0)     // CHILD PROCESS
+    {
+        close(fd1[1]);
+        close(fd2[0]);
+        close(fd3[0]);
+
+        if (fd1[0] != STDIN_FILENO)
+        {
+            if (dup2(fd1[0], STDIN_FILENO) != STDIN_FILENO)
+            {
+                std::cerr << "dup2 error to stdin" << std::endl;
+                exit(EXIT_FAILURE);
             }
-            if(dup2(defout, 1) == -1){
-                    perror("dup2");
-                    exit(EXIT_FAILURE);
+            close(fd1[0]);
+        }
+
+        if (fd2[1] != STDOUT_FILENO)
+        {
+            if (dup2(fd2[1], STDOUT_FILENO) != STDOUT_FILENO)
+            {
+                std::cerr << "dup2 error to stdout" << std::endl;
+                exit(EXIT_FAILURE);
             }
-            close(defout);
-            close(defin);
-            close(wpipefd[1]);
-            close(rpipefd[0]);
-            //Include error check here
-            write(wpipefd[1], input.data(), input.size());
-            //Just a char by char read here, you can change it accordingly
-            
-            std::vector<char> portion(4096);
-            
-            while (true) {
-                auto size = read(rpipefd[0], portion.data(), portion.size());
-                if (size == 1) {
-                    throw std::runtime_error("can't read from file");
-                } else if (size > 0) {
-                    portion.resize(size);
-                    result.insert(result.end(), portion.begin(), portion.end());
-                } else {
-                    break;
-                }
+            close(fd2[1]);
+        }
+        
+        if (fd3[1] != STDERR_FILENO)
+        {
+            if (dup2(fd3[1], STDERR_FILENO) != STDERR_FILENO)
+            {
+                std::cerr << "dup2 error to stderr" << std::endl;
+                exit(EXIT_FAILURE);
             }
+            close(fd3[1]);
+        }
+
+        execlp("sh", "sh", "-c", cmd.c_str(), 0);
+        std::cerr << "error executing " << cmd << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    else
+    {
+        int rv;
+        close(fd1[0]);
+        close(fd2[1]);
+        close(fd3[1]);
+
+        if (input.size()) {
+            if (write(fd1[1], input.data(), input.size()) != input.size())
+            {
+                throw std::runtime_error("subprocess can't read data");
+            }
+        }
+        
+        close(fd1[1]);
+
+        std::vector<char> portion(4096);
+        
+        while (true) {
+            auto size = read(fd2[0], portion.data(), portion.size());
+            if (size == 1) {
+                throw std::runtime_error("can't read from subprocess");
+            } else if (size > 0) {
+                portion.resize(size);
+                result.insert(result.end(), portion.begin(), portion.end());
+            } else {
+                break;
+            }
+        }
+
+        int exitcode;
+        waitpid(pid, &exitcode, 0);
     }
     
     return result;
-
 }
 
 
