@@ -259,6 +259,18 @@ std::vector<char> piped(const std::string& cmd, const std::vector<char>& input) 
     return result;
 }
 
+int start(const std::string& cmd, const std::vector<char>& input) {
+    FILE* f = popen(cmd.c_str(), "w");
+    if (input.size()) {
+        int a = ::fwrite(input.data(), 1, input.size(), f);
+        
+        if (a != input.size()) {
+            return -1;
+        }
+    }
+    return pclose(f);
+}
+
 
 
 

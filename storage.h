@@ -25,7 +25,7 @@ struct storage_t {
     
     virtual ~storage_t(){};
     
-    static std::shared_ptr<storage_t> create(const boost::property_tree::ptree& config);
+    static std::shared_ptr<storage_t> create(const boost::property_tree::ptree& config, const std::string& pin = std::string());
     
     virtual std::list<item_t> items() = 0;
     virtual item_t read(const std::string& fn) = 0;

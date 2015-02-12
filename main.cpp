@@ -106,6 +106,7 @@ CK_RV C_Initialize(CK_VOID_PTR a)
 
     soft_token.reset(new soft_token_t(rcfile));
 
+    
     return CKR_OK;
 }
 

@@ -1,1 +1,9 @@
 path=/home/jerry/devel/soft-pkcs/keys
+driver=mountfs
+
+[mountfs]
+1mount_1=encfs -S /tmp/3 /tmp/2
+1umount_1=fusermount -u /tmp/2
+mount_1=bindfs -n /home/jerry/devel/soft-pkcs/keys /tmp/a
+umount_1=fusermount -u /tmp/a
+path=/tmp/a
