@@ -1,9 +1,42 @@
+#There is two drivers to manage key storage: generic and mountfs
+#generic not needed to be specified, and it use 'path'
+#from global config scope
+#
+#mountfs - executes given commands when logging in token.
+#Commands executes in order they appeared in config.
+#For any mount_X apropriate umount_X will execute
+#when library closed
+#
+#Example:
+#driver=mountfs
+#
+#[mountfs]
+#mount_1=sshfs user@host:/my/keys/path /tmp/encrypted_keys
+#umount_1=fusermount -u /tmp/encrypted_keys
+#
+#mount_any_id=encfs -S /tmp/encrypted_keys /tmp/keys
+#umount_any_id=fusermount -u /tmp/keys
+#
+#path=/tmp/keys
+#
+# end of example
+
+
+#only for generic driver
 path=/home/jerry/devel/soft-pkcs/keys
+
+
+#using mountfs driver
 driver=mountfs
 
 [mountfs]
-1mount_1=encfs -S /tmp/3 /tmp/2
-1umount_1=fusermount -u /tmp/2
-mount_1=bindfs -n /home/jerry/devel/soft-pkcs/keys /tmp/a
-umount_1=fusermount -u /tmp/a
-path=/tmp/a
+#using FUSE to bind folder with keys to some dir for test
+mount_1=bindfs -n /tmp/enc_remote /tmp/enc
+umount_1=fusermount -u /tmp/enc
+
+#decrypt crypted keys
+mount_any_id=encfs -S /tmp/enc /tmp/dec
+umount_any_id=fusermount -u /tmp/dec
+
+#using decrypted keys as normal
+path=/tmp/dec

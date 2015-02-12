@@ -21,26 +21,6 @@ struct fs_storage_t : storage_t {
     {
         path = config_.get<std::string>("path");
         st_logf("Path : %s\n", path.c_str());
-        
-//         config_.put("test", "val");
-//         
-//         boost::property_tree::ptree p;
-//         p.put("sub1", "val1");
-//         
-//         boost::property_tree::ptree p2;
-//         p2.put("sub2", "val2");
-//         
-//         config_.push_back(std::make_pair("asd", p));
-        
-        BOOST_FOREACH(auto a, config_) {
-            std::cerr << "1" << a.first<< std::endl;
-        }
-        
-        boost::property_tree::ini_parser::write_ini(std::cerr, config_);
-        
-        std::cerr << "here" << std::endl;
-        
-        exit(0);
     }
   
     files_iterator files_begin() {
@@ -95,12 +75,14 @@ struct mount_t {
     mount_t(const std::string& m, const std::string& u, const std::string& pass)
         : umount(u)
     {
+        system(umount.c_str());
         if (start(m.c_str(), std::vector<char>(pass.begin(), pass.end())) != 0) {
             throw std::runtime_error("Can't mount: " + m);
         }        
     }
     
     ~mount_t() {
+        st_logf("Umounting: %s\n", umount.c_str());
         system(umount.c_str());
     }
     
@@ -109,9 +91,9 @@ struct mount_t {
 
 typedef std::shared_ptr<mount_t> mount_p;
 
-struct mountable_storage_t : storage_t {
+struct mountable_storage_t : fs_storage_t {
     mountable_storage_t(const boost::property_tree::ptree& c, const std::string& pin)
-        : storage_t(c) 
+        : fs_storage_t(c, pin) 
     {
         BOOST_FOREACH(auto p, c) {
             if (p.first.find("mount") == 0) {
@@ -123,19 +105,15 @@ struct mountable_storage_t : storage_t {
                 mounts.push_back(mount_p(new mount_t(mount, umount, pin)));
             }
         }
-        
     }
     
-    virtual std::list<item_t> items() {
-        return std::list<item_t>();
-    }
-    
-    virtual item_t read(const std::string& fn) {
-//         return item_t();
+    virtual ~mountable_storage_t() {
+        while (!mounts.empty()) {
+            mounts.pop_back();
+        }
     }
     
     std::list<mount_p> mounts;
-
 };
 
 

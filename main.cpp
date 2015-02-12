@@ -31,8 +31,6 @@ static void log(const std::string& str) {
     st_logf("%s\n", str.c_str());
 }
 
-
-
 template <int ID>
 struct func_t {
     static CK_RV not_supported() {
@@ -225,12 +223,12 @@ CK_RV C_GetTokenInfo(CK_SLOT_ID slotID, CK_TOKEN_INFO_PTR pInfo)
       "471131");
     pInfo->flags = CKF_TOKEN_INITIALIZED | CKF_USER_PIN_INITIALIZED;
 
-    if (!soft_token->logged() && std::getenv("SOFTPKCS11_FORCE_PIN")) {
-        std::string pin = read_password();
-        if (!soft_token->login(pin)) {
-            return CKR_PIN_INCORRECT;
-        }
-    }
+//     if (!soft_token->logged() && std::getenv("SOFTPKCS11_FORCE_PIN")) {
+//         std::string pin = read_password();
+//         if (!soft_token->login(pin)) {
+//             return CKR_PIN_INCORRECT;
+//         }
+//     }
     
     if (!soft_token->logged())
       pInfo->flags |= CKF_LOGIN_REQUIRED;
@@ -308,8 +306,6 @@ CK_RV C_CloseSession(CK_SESSION_HANDLE hSession)
 
 CK_RV C_FindObjectsInit(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, CK_ULONG ulCount)
 {
-//     struct session_state *state;
-
     st_logf("FindObjectsInit: Session: %d ulCount: %d\n", hSession, ulCount);
 
     auto session = session_t::find(hSession);
@@ -321,14 +317,8 @@ CK_RV C_FindObjectsInit(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, 
         return CKR_USER_NOT_LOGGED_IN;
     }  
     
-    print_attributes(pTemplate, ulCount);
+//     print_attributes(pTemplate, ulCount);
     
-//     VERIFY_SESSION_HANDLE(hSession, &state);
-
-//     if (state->find.next_object != -1) {
-//         application_error("application didn't do C_FindObjectsFinal\n");
-//         find_object_final(state);
-//     }
     if (ulCount) {
         
         Attributes attrs;
@@ -339,34 +329,6 @@ CK_RV C_FindObjectsInit(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, 
         
         session->objects_iterator = soft_token->find_handles_iterator(attrs);
         st_logf(" == find initialized\n");
-        
-//         std::cout << "F1:" << session->objects_iterator() << std::endl;
-//         std::cout << "F2:" << session->objects_iterator() << std::endl;
-//         std::cout << "F3:" << session->objects_iterator() << std::endl;
-        
-//         CK_ULONG i;
-//         size_t len;
-
-//         print_attributes(pTemplate, ulCount);
-
-//         state->find.attributes = 
-//             calloc(1, ulCount * sizeof(state->find.attributes[0]));
-//         if (state->find.attributes == NULL)
-//             return CKR_DEVICE_MEMORY;
-//         for (i = 0; i < ulCount; i++) {CKR_DEVICE_MEMORY
-//             state->find.attributes[i].pValue = 
-//             malloc(pTemplate[i].ulValueLen);
-//             if (state->find.attributes[i].pValue == NULL) {
-//             find_object_final(state); 
-//             return CKR_DEVICE_MEMORY;
-//             }
-//             memcpy(state->find.attributes[i].pValue,
-//             pTemplate[i].pValue, pTemplate[i].ulValueLen);
-//             state->find.attributes[i].type = pTemplate[i].type;
-//             state->find.attributes[i].ulValueLen = pTemplate[i].ulValueLen;
-//         }
-//         state->find.num_attributes = ulCount;
-//         state->find.next_object = 0;
     } else {
         st_logf(" == find all objects\n");
         session->objects_iterator = soft_token->handles_iterator();
@@ -485,9 +447,9 @@ CK_RV C_Login(CK_SESSION_HANDLE hSession, CK_USER_TYPE userType, CK_UTF8CHAR_PTR
     }
     
     if (soft_token->logged()) {
-        if (std::getenv("SOFTPKCS11_FORCE_PIN")) {
-            return CKR_OK;
-        }
+//         if (std::getenv("SOFTPKCS11_FORCE_PIN")) {
+//             return CKR_OK;
+//         }
         return CKR_USER_ALREADY_LOGGED_IN;
     }  
 
