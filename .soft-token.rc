@@ -22,21 +22,33 @@
 # end of example
 
 
-#only for generic driver
-path=/home/jerry/devel/soft-pkcs/keys
+[bindfs]
+driver=shell
+mount=bindfs -n /tmp/enc_remote /tmp/enc
+umount=fusermount -u /tmp/enc
+path=/tmp/enc
+
+[encfs]
+driver=shell
+mount=encfs -S /tmp/enc /tmp/dec
+umount=fusermount -u /tmp/dec
+path=/tmp/dec
+
+[crypt]
+driver=crypt
 
 
 #using mountfs driver
-driver=mountfs
+#driver=mountfs
 
-[mountfs]
+#[mountfs]
 #using FUSE to bind folder with keys to some dir for test
-mount_1=bindfs -n /tmp/enc_remote /tmp/enc
-umount_1=fusermount -u /tmp/enc
+#mount_1=bindfs -n /tmp/enc_remote /tmp/enc
+#umount_1=fusermount -u /tmp/enc
 
 #decrypt crypted keys
-mount_any_id=encfs -S /tmp/enc /tmp/dec
-umount_any_id=fusermount -u /tmp/dec
+#mount_any_id=encfs -S /tmp/enc /tmp/dec
+#umount_any_id=fusermount -u /tmp/dec
 
 #using decrypted keys as normal
-path=/tmp/dec
+#path=/tmp/dec
