@@ -1,10 +1,12 @@
 # soft-pkcs11
 
-soft-pkcs11 is a software only pkcs11 implementation.
+soft-pkcs11 is a software only pkcs11 implementation. The main idea is to be adble to turn your phone into secure keychain. But you can use this module as you wish.
 
 It is inspired by soft-pkcs11(http://people.su.se/~lha/soft-pkcs11/README) implementation by Love Hörnquist Åstrand(http://people.su.se/~lha/) and includes it as an example.
 
 It only handles RSA, this is because I use it for ssh-agent.
+
+It is not production-ready yet but I'am using it every day. 
 
 
 ## Features
