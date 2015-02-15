@@ -1,12 +1,12 @@
 
 #include <fstream>
 
+#include <boost/algorithm/string/replace.hpp>
 #include <boost/filesystem.hpp>
-#include <boost/iterator/filter_iterator.hpp>
-#include <boost/property_tree/ini_parser.hpp>
-#include <boost/lexical_cast.hpp>
-
 #include <boost/foreach.hpp>
+#include <boost/iterator/filter_iterator.hpp>
+#include <boost/lexical_cast.hpp>
+#include <boost/property_tree/ini_parser.hpp>
 
 #include "storage.h"
 #include "tools.h"
@@ -46,7 +46,6 @@ struct fs_storage_t : storage_t {
             
             result.push_back(
                 item_t(
-                    it->path().string(),
                     it->path().filename().string(),
                     std::vector<char>((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>())                         
                 )
@@ -60,7 +59,6 @@ struct fs_storage_t : storage_t {
             if (it->path().filename().string() == fn) {
                 std::ifstream stream(it->path().string());
                 return item_t(
-                    it->path().string(),
                     it->path().filename().string(),
                     std::vector<char>((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>())                         
                 );
@@ -68,6 +66,26 @@ struct fs_storage_t : storage_t {
         }
         throw std::runtime_error("such file not found");
     };
+    
+    virtual item_t write(const item_t& item) {
+        std::shared_ptr<FILE> file(
+            ::fopen((fs::directory_entry(path).path() / (item.filename)).native().c_str(), "w+"),
+            ::fclose
+        );
+        
+        if (!file.get()) {
+            throw std::runtime_error("can't open file for writing");
+        }
+        
+        int res = ::fwrite(item.data.data(), 1, item.data.size(), file.get());
+        if (res != item.data.size()) {
+            throw std::runtime_error("can't write file");
+        }
+        
+        file.reset();
+        
+        return read(item.filename);
+    }
     
     std::string path;
 };
@@ -90,8 +108,8 @@ struct mount_t {
     std::string umount;
 };
 
-struct shell_storage_t : fs_storage_t {
-    shell_storage_t(const config_t& c, const std::string& pin, std::shared_ptr<storage_t> s = std::shared_ptr<storage_t>())
+struct fuse_storage_t : fs_storage_t {
+    fuse_storage_t(const config_t& c, const std::string& pin, std::shared_ptr<storage_t> s = std::shared_ptr<storage_t>())
         : fs_storage_t(c, pin, s)
     {
         const std::string mount = c.get<std::string>("mount");
@@ -104,20 +122,27 @@ struct shell_storage_t : fs_storage_t {
     std::shared_ptr<mount_t> m_;
 };
 
-struct cryptfs_storage_t : storage_t {
-    cryptfs_storage_t(const config_t& c, const std::string& pin, std::shared_ptr<storage_t> s)
-        : storage_t(c,s)
+struct crypt_storage_t : storage_t {
+    crypt_storage_t(const config_t& c, const std::string& pin, std::shared_ptr<storage_t> s)
+        : storage_t(c, s)
     {
-        decrypt_ = "openssl enc -d -base64 " + c.get<std::string>("cipher") + " -k '" + pin + "'";
+        encrypt_ = c.get<std::string>("encrypt");        
+        decrypt_ = c.get<std::string>("decrypt");
+        
+        boost::replace_all(encrypt_, "%PIN%", pin);
+        boost::replace_all(decrypt_, "%PIN%", pin);
     }
     
-    virtual ~cryptfs_storage_t() {
+    virtual ~crypt_storage_t() {
     }
     
     virtual std::list<item_t> items() {
         std::list<item_t> result;
         for(auto item: prev->items()) {
-            result.push_back(decrypt(item));
+            const item_t d = decrypt(item);
+            if (!d.data.empty()) {
+                result.push_back(d);
+            }
         }
         
         return result;
@@ -127,17 +152,28 @@ struct cryptfs_storage_t : storage_t {
         return decrypt(prev->read(fn));
     }
     
+    virtual item_t write(const item_t& item) {
+        return decrypt(prev->write(encrypt(item)));
+    }
+    
     
     
     item_t decrypt(const item_t& item) const {
         return item_t {
-            item.fullname,
             item.filename,
             piped(decrypt_, item.data)
         };
     }
     
+    item_t encrypt(const item_t& item) const {
+        return item_t {
+            item.filename,
+            piped(encrypt_, item.data)
+        };
+    }
+    
     std::string decrypt_;
+    std::string encrypt_;
     
 };
 
@@ -147,17 +183,17 @@ std::shared_ptr<storage_t> storage_t::create(const config_t& config, const std::
     std::shared_ptr<storage_t> storage;
     BOOST_FOREACH(auto p, config) {
         if (p.second.size() > 0) {
-            if (p.second.get<std::string>("driver") == "shell") {
-                storage.reset(new shell_storage_t(p.second, pin, storage));
+            if (p.second.get<std::string>("driver") == "fs") {
+                storage.reset(new fs_storage_t(p.second, pin, storage));
+            }
+            else if (p.second.get<std::string>("driver") == "fuse") {
+                storage.reset(new fuse_storage_t(p.second, pin, storage));
             }
             else if (p.second.get<std::string>("driver") == "crypt") {
-                storage.reset(new cryptfs_storage_t(p.second, pin, storage));
+                storage.reset(new crypt_storage_t(p.second, pin, storage));
             }
         }
     }
     
-    std::cerr << "data:" << storage->read("crypt").data.data() << std::endl;
-    exit(-1);
-
     return storage;
 }

@@ -21,21 +21,30 @@
 #
 # end of example
 
+[fs]
+driver=fs
+path=/home/jerry/devel/soft-pkcs/keys
+
+[openssl]
+driver=crypt1
+decrypt=/usr/bin/openssl enc -d -base64 -aes-256-cbc -k '%PIN%'
+encrypt=/usr/bin/openssl enc -base64 -aes-256-cbc -k '%PIN%'
+
 
 [bindfs]
-driver=shell
+driver=shell1
 mount=bindfs -n /tmp/enc_remote /tmp/enc
 umount=fusermount -u /tmp/enc
 path=/tmp/enc
 
 [encfs]
-driver=shell
+driver=shell1
 mount=encfs -S /tmp/enc /tmp/dec
 umount=fusermount -u /tmp/dec
 path=/tmp/dec
 
 [crypt]
-driver=crypt
+driver=crypt1
 
 
 #using mountfs driver

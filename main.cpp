@@ -317,7 +317,7 @@ CK_RV C_FindObjectsInit(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, 
         return CKR_USER_NOT_LOGGED_IN;
     }  
     
-//     print_attributes(pTemplate, ulCount);
+//    print_attributes(pTemplate, ulCount);
     
     if (ulCount) {
         
@@ -461,6 +461,20 @@ CK_RV C_Login(CK_SESSION_HANDLE hSession, CK_USER_TYPE userType, CK_UTF8CHAR_PTR
     }
 }
 
+CK_RV C_Logout(CK_SESSION_HANDLE hSession)
+{
+    st_logf("Logout\n");
+    
+    auto session = session_t::find(hSession);
+    if (session == session_t::end()) {
+        return CKR_SESSION_HANDLE_INVALID;
+    }
+    
+    soft_token->logout();
+    
+    return CKR_OK;    
+}
+
 CK_RV C_SignInit(CK_SESSION_HANDLE hSession, CK_MECHANISM_PTR pMechanism, CK_OBJECT_HANDLE hKey)
 {
     st_logf("SignInit\n");
@@ -556,6 +570,47 @@ CK_RV C_SignFinal(CK_SESSION_HANDLE hSession, CK_BYTE_PTR pSignature, CK_ULONG_P
     return CKR_OK;
 }
 
+CK_RV C_CreateObject(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, CK_ULONG ulCount, CK_OBJECT_HANDLE_PTR phObject)
+{
+    st_logf("C_CreateObject\n");
+    
+    auto session = session_t::find(hSession);
+    if (session == session_t::end()) {
+        return CKR_SESSION_HANDLE_INVALID;
+    }
+    
+    if (!soft_token->logged()) {
+        return CKR_USER_NOT_LOGGED_IN;
+    } 
+    
+    CK_OBJECT_HANDLE id = soft_token_t::handle_invalid();
+    
+    std::string label;
+    std::string value;
+    
+    for (int i = 0; i < ulCount; i++) {
+        if(pTemplate[i].type == CKA_VALUE) {
+            value = attribute_t(pTemplate[i]).to_string();
+        }
+        if(pTemplate[i].type == CKA_LABEL) {
+            label = attribute_t(pTemplate[i]).to_string();
+        }
+    }
+    
+    if (label.empty()) {
+        return CKR_OK;
+    }
+    
+    id = soft_token->write(label, value);    
+    
+    if (id != soft_token_t::handle_invalid()) {
+        *phObject = id;
+        return CKR_OK;
+    }
+    
+    return CKR_ARGUMENTS_BAD;
+}
+
 CK_FUNCTION_LIST funcs = {
     { 2, 11 },
     C_Initialize,
@@ -576,9 +631,9 @@ CK_FUNCTION_LIST funcs = {
         (void *)func_t<5>::not_supported, //C_GetSessionInfo,
     (void *)func_t<6>::not_supported, /* C_GetOperationState */
     (void *)func_t<7>::not_supported, /* C_SetOperationState */
-    C_Login, //C_Login,
-        (void *)func_t<9>::not_supported, //C_Logout,(void *)func_t::
-    (void *)func_t<10>::not_supported, /* C_CreateObject */
+    C_Login,
+    C_Logout,
+    C_CreateObject,
     (void *)func_t<11>::not_supported, /* C_CopyObject */
     (void *)func_t<12>::not_supported, /* C_DestroyObject */
     (void *)func_t<13>::not_supported, /* C_GetObjectSize */

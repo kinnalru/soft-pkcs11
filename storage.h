@@ -10,15 +10,13 @@
 #include "tools.h"
 
 struct item_t {
-    item_t(const std::string& full, const std::string& fn, const std::vector<char>& d)
-        : fullname(full)
-        , filename(fn)
+    item_t(const std::string& fn, const std::vector<char>& d)
+        : filename(fn)
         , data(d)
     {}
     
-    const std::string fullname; //FIXME HACK remove
     const std::string filename;
-    /*const*/ std::vector<char> data;
+    const std::vector<char> data;
 };
 
 struct storage_t {
@@ -29,6 +27,7 @@ struct storage_t {
     
     virtual std::list<item_t> items() = 0;
     virtual item_t read(const std::string& fn) = 0;
+    virtual item_t write(const item_t& item) = 0;
 
 protected:
     storage_t(const boost::property_tree::ptree& c, std::shared_ptr<storage_t> s = std::shared_ptr<storage_t>()) : prev(s), config_(c){};

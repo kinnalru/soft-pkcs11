@@ -62,31 +62,37 @@ private:
 
 struct descriptor_t {
   
-    descriptor_t(const item_t& item)
-        : fullname(item.fullname)
-        , filename(item.filename)
+    descriptor_t(const item_t& it)
+        : item(it)
     {
+        if (item.data.empty()) {
+            throw std::runtime_error("There is no data in item");
+        }
+        
         const std::string str(item.data.begin(), item.data.end());
         std::stringstream stream(str);
         
         std::getline(stream, first_line, '\n');
         stream.seekg (0, stream.beg);
         
-        data = item.data;
-        id = to_object_id()(filename);
-        file = ::fmemopen(data.data(), data.size(), "r");
+        id = to_object_id()(item.filename);
+        
+        file.reset(
+            ::fmemopen(item.data.data(), item.data.size(), "r"),
+            ::fclose
+        );
+        
+        if (!file.get()) {
+            throw std::runtime_error("Can't memopen data");
+        }
     }
     
-    ~descriptor_t() {
-        ::fclose(file);
-    }
+    ~descriptor_t() {}
     
-    const std::string fullname;
-    const std::string filename;
-    std::vector<char> data;
+    const item_t item;
     std::string first_line;
     CK_OBJECT_HANDLE id;
-    FILE *file;
+    std::shared_ptr<FILE> file;
 };
 
 struct is_public_key : std::unary_function<descriptor_p, bool> {
@@ -130,11 +136,11 @@ struct to_attributes : std::unary_function<const fs::directory_entry&, Objects::
     }
     
     Objects::value_type operator() (const item_t& item) {
+        
         descriptor_p desc(new descriptor_t(item));
 
         Attributes attrs = {
-            create_object(AttrFilename, desc->filename),
-            create_object(AttrFullpath, desc->fullname),
+            create_object(AttrFilename, desc->item.filename),
         };
         
         attrs = data_object_attrs(desc, attrs);
@@ -372,11 +378,19 @@ bool soft_token_t::login(const std::string& pin)
         
         p_->pin = pin;
     }
-    catch(...) {
+    catch(const std::exception& e) {
+        st_logf("Exception: %s\n", e.what());
         return false;
     }
     
     return true;
+}
+
+void soft_token_t::logout()
+{
+    p_->objects.clear();
+    p_->storage.reset();
+    p_->pin.clear();
 }
 
 Handles soft_token_t::handles() const
@@ -431,12 +445,16 @@ CK_OBJECT_HANDLE soft_token_t::handle_invalid()
 
 Attributes soft_token_t::attributes(CK_OBJECT_HANDLE id) const
 {
+    st_logf("attributes 1\n");
     auto it = p_->objects.find(id);
     
+    st_logf("attributes 2\n");
     if (it != p_->objects.end()) {
+        st_logf("attributes 2.1\n");
         return it->second;
     }
     
+    st_logf("attributes 3\n");
     return Attributes();
 }
 
@@ -458,13 +476,33 @@ std::string soft_token_t::read(CK_OBJECT_HANDLE id) const
     if (it != p_->objects.end()) {
         if (it->second[AttrSshUnpacked].to_bool()) {
             return it->second[CKA_VALUE].to_string();
-        }
+        } 
         
         const item_t item = p_->storage->read(it->second[AttrFilename].to_string());
         return std::string(item.data.begin(), item.data.end());
     }
 
     return std::string();
+}
+
+CK_OBJECT_HANDLE soft_token_t::write(const std::string& filename, const std::string& data) const
+{
+    auto it = std::find_if(p_->objects.begin(), p_->objects.end(),
+        by_attrs({create_object(AttrFilename, filename)}));
+    
+    if (it != p_->objects.end()) {
+        return soft_token_t::handle_invalid();
+    }
+    
+    const item_t item({
+        filename,
+        std::vector<char>(data.begin(), data.end())
+    });
+    
+    const item_t item2 = p_->storage->write(item);
+    
+    const auto a = p_->objects.insert(to_attributes(p_->objects)(item2)).first;
+    return a->first;
 }
 
 std::vector<unsigned char> soft_token_t::sign(CK_OBJECT_HANDLE id, CK_MECHANISM_TYPE type, CK_BYTE_PTR pData, CK_ULONG ulDataLen) const
@@ -550,7 +588,7 @@ Attributes data_object_attrs(descriptor_p desc, const Attributes& attributes)
         create_object(CKA_TOKEN,     bool_true),
         create_object(CKA_PRIVATE,   bool_true),
         create_object(CKA_MODIFIABLE,bool_false),
-        create_object(CKA_LABEL,     desc->filename),
+        create_object(CKA_LABEL,     desc->item.filename),
         
         //Data Object Attributes
         //create_object(CKA_APPLICATION, desc->id),
@@ -577,7 +615,7 @@ Attributes public_key_attrs(descriptor_p desc, const Attributes& attributes)
         create_object(CKA_TOKEN,     bool_true),
         create_object(CKA_PRIVATE,   bool_false),
         create_object(CKA_MODIFIABLE,bool_false),
-        create_object(CKA_LABEL,     desc->filename),
+        create_object(CKA_LABEL,     desc->item.filename),
         
         //Common Key Attributes
         //create_object(CKA_KEY_TYPE,  type),
@@ -615,7 +653,7 @@ Attributes rsa_public_key_attrs(descriptor_p desc, const Attributes& attributes)
         create_object(CKA_KEY_TYPE,  type),
     };
     
-    if (EVP_PKEY *pkey = PEM_read_PUBKEY(desc->file, NULL, NULL, NULL)) {
+    if (EVP_PKEY *pkey = PEM_read_PUBKEY(desc->file.get(), NULL, NULL, NULL)) {
         int size = 0;
         std::shared_ptr<unsigned char> buf;
         
@@ -640,17 +678,11 @@ Attributes rsa_public_key_attrs(descriptor_p desc, const Attributes& attributes)
 Attributes ssh_public_key_attrs(descriptor_p desc, const Attributes& attributes)
 {
     Attributes attrs;
+    const auto data = piped("ssh-keygen -e -m PKCS8", desc->item.data);
     
-    std::shared_ptr<FILE> file(
-        ::popen(std::string("ssh-keygen -f " + desc->fullname + " -e -m PKCS8").c_str(), "r"),
-        ::pclose);
-    
-    if (file) {
-        const std::vector<char> data = read_all(file);
-        std::shared_ptr<FILE> mem = read_mem(data);
-
-        FILE* reserve = desc->file;        
-        desc->file = mem.get();
+    if (!data.empty()) {
+        std::shared_ptr<FILE> reserve = desc->file;        
+        desc->file =read_mem(data);
         attrs = rsa_public_key_attrs(desc, attributes);
         desc->file = reserve;
 
@@ -678,7 +710,7 @@ Attributes private_key_attrs(descriptor_p desc, const Attributes& attributes)
         create_object(CKA_TOKEN,     bool_true),
         create_object(CKA_PRIVATE,   bool_true),
         create_object(CKA_MODIFIABLE,bool_false),
-        create_object(CKA_LABEL,     desc->filename),
+        create_object(CKA_LABEL,     desc->item.filename),
         
         //Common Key Attributes
         create_object(CKA_KEY_TYPE,  type),
@@ -720,7 +752,7 @@ Attributes rsa_private_key_attrs(descriptor_p desc, const Attributes& attributes
         create_object(CKA_KEY_TYPE,  type),
     };
     
-    if (EVP_PKEY *pkey = PEM_read_PrivateKey(desc->file, NULL, NULL, "")) {
+    if (EVP_PKEY *pkey = PEM_read_PrivateKey(desc->file.get(), NULL, NULL, "")) {
         int size = 0;
         std::shared_ptr<unsigned char> buf;
         
@@ -754,7 +786,7 @@ Attributes secret_key_attrs(descriptor_p desc, const Attributes& attributes)
         create_object(CKA_TOKEN,     bool_true),
         create_object(CKA_PRIVATE,   bool_true),
         create_object(CKA_MODIFIABLE,bool_false),
-        create_object(CKA_LABEL,     desc->filename),
+        create_object(CKA_LABEL,     desc->item.filename),
         
         //Common Key Attributes
         //create_object(CKA_KEY_TYPE,        id),

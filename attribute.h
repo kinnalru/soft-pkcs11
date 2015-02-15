@@ -9,11 +9,8 @@
 
 struct attribute_t {
 
-    attribute_t() {}
+    attribute_t() : attr_({0,0,0}) {}
     attribute_t(const CK_ATTRIBUTE& other);
-    
-    
-//     attribute_t(CK_ATTRIBUTE_TYPE type, CK_ULONG size);
     
     attribute_t(CK_ATTRIBUTE_TYPE type, CK_VOID_PTR value, CK_ULONG size);
     
@@ -46,7 +43,7 @@ struct attribute_t {
     }
     
     inline bool to_bool() const {
-        return *(reinterpret_cast<CK_BBOOL*>(attr_.pValue)) == CK_TRUE;
+        return attr_.pValue && *(reinterpret_cast<CK_BBOOL*>(attr_.pValue)) == CK_TRUE;
     }
     
 private:

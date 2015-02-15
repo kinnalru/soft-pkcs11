@@ -23,6 +23,7 @@ public:
     
     bool logged() const;
     bool login(const std::string& pin);
+    void logout();
 
     Handles handles() const;
     
@@ -35,6 +36,7 @@ public:
     bool check(CK_OBJECT_HANDLE id, const Attributes& attrs) const;
      
     std::string read(CK_OBJECT_HANDLE id) const;
+    CK_OBJECT_HANDLE write(const std::string& filename, const std::string& data) const;
     
     
     std::vector<unsigned char> sign(CK_OBJECT_HANDLE id, CK_MECHANISM_TYPE type, CK_BYTE_PTR pData, CK_ULONG ulDataLen) const;
