@@ -113,7 +113,13 @@ pkcs11-tool --module ./libsoft-pkcs.so -l -p 123123123 -r -y privkey -a ssh-priv
 To use it with ssh: 
 
 ```Shell
-eval
+jerry@jerry ~/devel/soft-pkcs/build $ eval `ssh-agent`
+Agent pid 12930
+jerry@jerry ~/devel/soft-pkcs/build $ ssh-add -s `pwd`/libsoft-pkcs.so 
+Enter passphrase for PKCS#11: <123123123>
+Card added: /home/jerry/devel/soft-pkcs/build/./libsoft-pkcs.so
+jerry@jerry ~/devel/soft-pkcs/build $ ssh jerry@localhost                   
+jerry@jerry ~ SSH
 ```
 
 
