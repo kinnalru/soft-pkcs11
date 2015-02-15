@@ -78,9 +78,52 @@ umount=fusermount -u /home/jerry/.soft-pkcs11/keys
 path=/home/jerry/.soft-pkcs11/keys
 ```
 
-
 You can combine driver layers.
 
+
+# Usage
+
+To manage keys through soft-pkcs11 module you can use `pkcs11-tool` from `opensc`  package:
+```Shell
+jerry@jerry ~/devel/soft-pkcs/build $ pkcs11-tool --module ./libsoft-pkcs.so -O -l -p 123123123 
+Using slot 0 with a present token (0x1)
+Public Key Object; RSA 0 bits
+  label:      SSH ssh-private.key.pub
+  ID:         32303834333137323432393530393938333731
+  Usage:      encrypt, verify
+Private Key Object; RSA 
+  label:      ssh-private.key
+  ID:         3130383437353832373236323639373335323836
+  Usage:      decrypt, sign, unwrap
+  Access:     always authenticate
+Private Key Object; RSA 
+  label:      ssl-private.key
+  ID:         3133313438313534303736313735313537333832
+  Usage:      decrypt, sign, unwrap
+  Access:     always authenticate
+Public Key Object; RSA 0 bits
+  label:      ssh-private.key.pub
+  ID:         3130383437353832373236323639373335323836
+  Usage:      encrypt, verify
+
+
+pkcs11-tool --module ./libsoft-pkcs.so -l -p 123123123 -r -y privkey -a ssh-private.key
+```
+
+To use it with ssh: 
+
+```Shell
+eval
+```
+
+
+
+## Security
+
+* There is no data stored in module memory except pin. But data can be stored in underlying fs cache or something else. Data transmitted to the module in initialization and only public metadata stored(label, size, public modulus...). Another dtata transmittion happens when you `read` key/data contents or use sign/encrypt which are implemeted through OpenSsl. 
+* You can use any underlying crypto-tools like dm-crypt, sshfs, encfs, gpg-crypt and other, so they are responsible for whole security. 
+* It is strongly recommended to use RSA-encrycted private keys.
+ 
 
 
 
