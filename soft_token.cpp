@@ -6,6 +6,7 @@
 #include <openssl/pem.h>
 #include <openssl/rand.h>
 #include <openssl/x509.h>
+#include <openssl/md5.h>
 
 #include <iostream>
 #include <fstream>
@@ -27,7 +28,6 @@
 
 enum Attribute : CK_ATTRIBUTE_TYPE {
     AttrFilename = CKA_VENDOR_DEFINED + 1,
-    AttrFullpath,
     AttrSshPublic,
     AttrSshUnpacked,
 };
@@ -158,9 +158,9 @@ struct to_attributes : std::unary_function<const fs::directory_entry&, Objects::
             {
                 //create additional unpacked key
                 attrs[AttrSshUnpacked] = attribute_t(AttrSshUnpacked, bool_true);
-                attrs[CKA_OBJECT_ID] = attribute_t(CKA_OBJECT_ID,  std::to_string(~(desc->id)));
-                attrs[CKA_ID] = attribute_t(CKA_ID,  std::to_string(~(desc->id)));
-                objects.insert(std::make_pair(~(desc->id), attrs));
+                attrs[CKA_OBJECT_ID] = attribute_t(CKA_OBJECT_ID,  std::to_string(desc->id - 1));
+                attrs[CKA_ID] = attribute_t(CKA_ID,  std::to_string(desc->id - 1));
+                objects.insert(std::make_pair(desc->id - 1, attrs)).first->first;
             };
             
             attrs.erase(AttrSshUnpacked);
@@ -359,6 +359,7 @@ bool soft_token_t::login(const std::string& pin)
             
             auto public_range = p_->objects
                 | filtered(by_attrs({create_object(CKA_CLASS, public_key_c)}))
+//                 | filtered(by_attrs({create_object(AttrSshPublic, bool_true)}))
                 | filtered([&private_key] (const Objects::value_type& pub_key) mutable {
                     return is_equal(CKA_MODULUS, pub_key, private_key)
                         || pub_key.second.at(CKA_LABEL).to_string() == (private_key.second.at(CKA_LABEL).to_string() + ".pub");
@@ -371,7 +372,7 @@ bool soft_token_t::login(const std::string& pin)
         }
         
         for(auto it = p_->objects.begin(); it != p_->objects.end(); ++it ) {
-    //         st_logf("  *** Final obejct: %s %s - %s\n", it->second.at(CKA_LABEL)->pValue, std::to_string(it->first).c_str(), it->second.at(CKA_ID).to_string().c_str());
+//             st_logf("  *** Final obejct: %s %s - %s\n", it->second.at(CKA_LABEL)->pValue, std::to_string(it->first).c_str(), it->second.at(CKA_ID).to_string().c_str());
         }
         
         st_logf("Invalid obejct: %lu\n", this->handle_invalid());
@@ -445,16 +446,12 @@ CK_OBJECT_HANDLE soft_token_t::handle_invalid()
 
 Attributes soft_token_t::attributes(CK_OBJECT_HANDLE id) const
 {
-    st_logf("attributes 1\n");
     auto it = p_->objects.find(id);
     
-    st_logf("attributes 2\n");
     if (it != p_->objects.end()) {
-        st_logf("attributes 2.1\n");
         return it->second;
     }
     
-    st_logf("attributes 3\n");
     return Attributes();
 }
 
@@ -511,9 +508,14 @@ std::vector<unsigned char> soft_token_t::sign(CK_OBJECT_HANDLE id, CK_MECHANISM_
     
     if (it == p_->objects.end()) throw std::runtime_error("err");
     
-    FILE* file = ::fopen(it->second[AttrFullpath].to_string().c_str(), "r");    
+    const auto data = read(id);
     
-    if (EVP_PKEY *pkey = PEM_read_PrivateKey(file, NULL, NULL, NULL)) {
+    std::shared_ptr<FILE> file(
+        ::fmemopen(data.c_str(), data.size(), "r"),
+        ::fclose
+    );
+    
+    if (EVP_PKEY *pkey = PEM_read_PrivateKey(file.get(), NULL, NULL, NULL)) {
         if (pkey->pkey.rsa == NULL) {
 //             return CKR_ARGUMENTS_BAD;
             throw std::runtime_error("err");
@@ -566,8 +568,6 @@ std::vector<unsigned char> soft_token_t::sign(CK_OBJECT_HANDLE id, CK_MECHANISM_
         
         return buffer;
     }
-    
-    ::fclose(file);
     
     return std::vector<unsigned char>();
 }
@@ -678,7 +678,9 @@ Attributes rsa_public_key_attrs(descriptor_p desc, const Attributes& attributes)
 Attributes ssh_public_key_attrs(descriptor_p desc, const Attributes& attributes)
 {
     Attributes attrs;
-    const auto data = piped("ssh-keygen -e -m PKCS8", desc->item.data);
+    const auto data = piped("cat > /tmp/.soft-pkcs.tmp && ssh-keygen -e -m PKCS8 -f /tmp/.soft-pkcs.tmp && rm /tmp/.soft-pkcs.tmp", desc->item.data);
+    
+    assert(data.size());
     
     if (!data.empty()) {
         std::shared_ptr<FILE> reserve = desc->file;        
