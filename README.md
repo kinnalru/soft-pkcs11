@@ -16,9 +16,9 @@ It only handles RSA, this is because I use it for ssh-agent.
 * Can use encfs to transparently encrypt/decrypt keys
 * Can use openssl to transparently encrypt/decrypt keys
 * Can use ANY script to transparently encrypt/decrypt keys
-* Can use many transport/encryption layes: openssl over encfs over sshfs....
+* Can use many transport/encryption layers: openssl over encfs over sshfs....
 * No data stored in memory or copied to computer
-* easly(but on C++) to extend transport protocol to be able to use with HTTP or FTP or any other
+* easy(but on C++) to extend transport protocol to be able to use with HTTP or FTP or any other
 
 
 ## PKCS11 Features
@@ -29,11 +29,17 @@ It only handles RSA, this is because I use it for ssh-agent.
 
 
 ## Usage
-
-I'am using it with my android phone to make it my keychain. All keys stored on my phone in encrypted form().
-They are mounted to local folder with fuse sshfs. And accessible only for my user(even root can't access mounted fs).
-After mouting encrypted mounts through another fuse module encfs to another folder and make it unencrypted.
+I'am using it with my android phone to make it my keychain. All keys stored on my phone in encrypted form(openssl/enfs/md-crypt).
+They are mounted to local folder with fuse sshfs. And they are accessible only for my user(even root can't access mounted fs).
+After mouting encrypted keys they mounts through another fuse module encfs to another folder and makes unencrypted.
 But you still must use RSA private key encryption. So I can use my phone with ssh or ssh-agent.
+
+This is very easy: 
+```Shell
+eval `ssh-agent`
+ssh-add -s `pwd`/./libsoft-pkcs.so
+````
+Well done.
 
 
 ## Config Examples
@@ -45,18 +51,19 @@ All drivers are stacked in order as they appeared in config.
 ### Local folder with encrypted keys
 ```INI
 [fs any label]
-#simple filesystem driver so you already can use soft-pkcs11 to expose keys is fodler
+#simple filesystem driver so you already can use soft-pkcs11 to expose keys is folder
 driver=fs
 path=/home/jerry/devel/soft-pkcs/keys
 
 [openssl encryption]
 driver=crypt
+#%PIN% substituted when token logged in with pin
 decrypt=/usr/bin/openssl enc -d -base64 -aes-256-cbc -k '%PIN%'
 encrypt=/usr/bin/openssl enc -base64 -aes-256-cbc -k '%PIN%'
 ```
 
 
-With this config key files stored in `/home/jerry/devel/soft-pkcs/keys` encrypted as specified in `openssl encryption` block. Pin used as password for encryption.
+With this config key files stored in `/home/jerry/devel/soft-pkcs/keys` encrypted as specified in `[openssl encryption]` block. Pin used as password for encryption.
 
 ### Remote Android FS with encfs
 
@@ -64,8 +71,8 @@ With this config key files stored in `/home/jerry/devel/soft-pkcs/keys` encrypte
 [android fs]
 driver=fuse
 #this is simple password to access my phone through ssh. It is simple because SFTP server is not always run.
-mount=echo "123123123" | sshfs -o password_stdin root@android:/mnt/sdcard/keys /home/jerry/.soft-pkcs11/sshfs
-umount=fusermount -u /home/jerry/.soft-pkcs11/sshfs
+mount=echo "123123123" | sshfs -o password_stdin root@android:/mnt/sdcard/keys /home/jerry/.soft-pkcs11/sshfs &> /dev/null
+umount=fusermount -u /home/jerry/.soft-pkcs11/sshfs &> /dev/null
 #if you don't want to use encryption you can use module already.
 path=/home/jerry/.soft-pkcs11/sshfs
 
@@ -73,8 +80,8 @@ path=/home/jerry/.soft-pkcs11/sshfs
 driver=fuse
 #password(pin) ALWAYS written to stdin with 'fuse' driver
 #setting up encfs(.encfs6.xml) is made by hand
-mount=encfs -S /home/jerry/.soft-pkcs11/sshfs /home/jerry/.soft-pkcs11/keys
-umount=fusermount -u /home/jerry/.soft-pkcs11/keys
+mount=encfs -S /home/jerry/.soft-pkcs11/sshfs /home/jerry/.soft-pkcs11/keys  &> /dev/null
+umount=fusermount -u /home/jerry/.soft-pkcs11/keys  &> /dev/null
 path=/home/jerry/.soft-pkcs11/keys
 ```
 
