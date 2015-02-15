@@ -137,6 +137,7 @@ jerry@jerry ~ SSH
 
 * There is no data stored in module memory except pin. But data can be stored in underlying fs cache or something else. Data transmitted to the module in initialization and only public metadata stored(label, size, public modulus...). Another data transmittion happens when you `read` key/data contents or use `sign/encrypt` which are implemeted through OpenSsl. 
 * You can use any underlying crypto-tools like dm-crypt, sshfs, encfs, gpg-crypt and other, so they are responsible for whole security. 
+* If you loose your phone - all keys on it stay encrypted(if you using encryption) by selected software(openssl/encfs) and also by generic RSA-encrypted private internals.
 * It is strongly recommended to use RSA-encrycted private keys.
  
 
