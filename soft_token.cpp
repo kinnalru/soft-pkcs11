@@ -323,9 +323,12 @@ soft_token_t::soft_token_t(const std::string& rcfile)
 {
    
     try {
-      boost::property_tree::ini_parser::read_ini(rcfile, p_->config);
+        boost::property_tree::ini_parser::read_ini(rcfile, p_->config);
     }
-    catch (...) {}
+    catch (const std::exception& e) {
+        st_logf("Error reading config file %s: %s\n", rcfile.c_str(), e.what());
+        exit(-1);
+    }
     
     st_logf("Config file: %s\n", rcfile.c_str());
 }

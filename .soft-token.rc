@@ -1,63 +1,20 @@
-#There is two drivers to manage key storage: generic and mountfs
-#generic not needed to be specified, and it use 'path'
-#from global config scope
-#
-#mountfs - executes given commands when logging in token.
-#Commands executes in order they appeared in config.
-#For any mount_X apropriate umount_X will execute
-#when library closed
-#
-#Example:
-#driver=mountfs
-#
-#[mountfs]
-#mount_1=sshfs user@host:/my/keys/path /tmp/encrypted_keys
-#umount_1=fusermount -u /tmp/encrypted_keys
-#
-#mount_any_id=encfs -S /tmp/encrypted_keys /tmp/keys
-#umount_any_id=fusermount -u /tmp/keys
-#
-#path=/tmp/keys
-#
-# end of example
+# Please read README.md
 
-[fs]
-driver=fs
-path=/home/jerry/devel/soft-pkcs/keys
+[ssh]
+driver=shell
+list=ssh root@192.168.42.129 -C 'ls /mnt/sdcard/keys' 2> /dev/null
+read=ssh root@192.168.42.129 -C 'cat /mnt/sdcard/keys/%FILE%' 2> /dev/null
+write=ssh root@192.168.42.129 -C 'cat > /mnt/sdcard/keys/%FILE%' 2> /dev/null
+
+
+#[android fs]
+#driver=fuse
+#mount=echo "123123123" | sshfs -o password_stdin root@192.168.42.129:/mnt/sdcard/keys /home/jerry/.soft-pkcs11/sshfs &> /dev/null
+#umount=fusermount -u /home/jerry/.soft-pkcs11/sshfs &> /dev/null
+#path=/home/jerry/.soft-pkcs11/sshfs
 
 [openssl]
-driver=crypt1
+driver=crypt
 decrypt=/usr/bin/openssl enc -d -base64 -aes-256-cbc -k '%PIN%'
 encrypt=/usr/bin/openssl enc -base64 -aes-256-cbc -k '%PIN%'
 
-
-[bindfs]
-driver=shell1
-mount=bindfs -n /tmp/enc_remote /tmp/enc
-umount=fusermount -u /tmp/enc
-path=/tmp/enc
-
-[encfs]
-driver=shell1
-mount=encfs -S /tmp/enc /tmp/dec
-umount=fusermount -u /tmp/dec
-path=/tmp/dec
-
-[crypt]
-driver=crypt1
-
-
-#using mountfs driver
-#driver=mountfs
-
-#[mountfs]
-#using FUSE to bind folder with keys to some dir for test
-#mount_1=bindfs -n /tmp/enc_remote /tmp/enc
-#umount_1=fusermount -u /tmp/enc
-
-#decrypt crypted keys
-#mount_any_id=encfs -S /tmp/enc /tmp/dec
-#umount_any_id=fusermount -u /tmp/dec
-
-#using decrypted keys as normal
-#path=/tmp/dec

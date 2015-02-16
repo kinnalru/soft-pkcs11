@@ -40,6 +40,10 @@ This is very easy:
 ```Shell
 eval `ssh-agent`
 ssh-add -s `pwd`/./libsoft-pkcs.so
+
+#use ssh-agent forwarding
+ssh -A jerry@somedomain 
+ssh user@anotherdomain
 ````
 Well done.
 
@@ -115,8 +119,15 @@ Public Key Object; RSA 0 bits
   ID:         3130383437353832373236323639373335323836
   Usage:      encrypt, verify
 
-
+# get contents of private key
 pkcs11-tool --module ./libsoft-pkcs.so -l -p 123123123 -r -y privkey -a ssh-private.key
+
+# add private key to container
+pkcs11-tool  --module ./libsoft-pkcs.so -O -l -p 123123123 -w ../keys/ssh-private.key --label ssh-private.key --type data
+
+# add public key to container
+pkcs11-tool  --module ./libsoft-pkcs.so -O -l -p 123123123 -w ../keys/ssh-private.key.pub --label ssh-private.key.pub --type data
+
 ```
 
 To use it with ssh: 

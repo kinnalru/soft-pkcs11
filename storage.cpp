@@ -1,7 +1,7 @@
 
 #include <fstream>
 
-#include <boost/algorithm/string/replace.hpp>
+#include <boost/algorithm/string.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/foreach.hpp>
 #include <boost/iterator/filter_iterator.hpp>
@@ -122,6 +122,58 @@ struct fuse_storage_t : fs_storage_t {
     std::shared_ptr<mount_t> m_;
 };
 
+struct shell_storage_t : storage_t {
+    shell_storage_t(const config_t& c, const std::string& pin, std::shared_ptr<storage_t> s = std::shared_ptr<storage_t>())
+        : storage_t(c, s)
+    {
+        list_ = c.get<std::string>("list");        
+        read_ = c.get<std::string>("read");
+        write_ = c.get<std::string>("write");
+    }
+      
+    virtual std::list<item_t> items() {
+        std::list<item_t> result;
+        
+        auto data = piped(list_);
+        data.push_back(0);
+        
+        std::vector<std::string> files;
+        boost::split(files, data, boost::is_any_of("\n"));
+        
+        for(auto file: files) {
+          try {
+              const item_t item = read(file);
+              if (!item.data.empty()) {
+                result.push_back(item);
+              }
+          } catch(const std::exception& e) {
+          }
+        }
+        
+        return result;
+    }
+    
+    virtual item_t read(const std::string& fn) {
+        std::string read = read_;
+        boost::replace_all(read, "%FILE%", fn);
+        return item_t {
+            fn,
+            piped(read)
+        };
+    }
+    
+    virtual item_t write(const item_t& item) {
+        std::string write = write_;
+        boost::replace_all(write, "%FILE%", item.filename);
+        piped(write, item.data);
+        return read(item.filename);
+    }
+    
+    std::string list_;
+    std::string read_;
+    std::string write_;
+};
+
 struct crypt_storage_t : storage_t {
     crypt_storage_t(const config_t& c, const std::string& pin, std::shared_ptr<storage_t> s)
         : storage_t(c, s)
@@ -191,6 +243,9 @@ std::shared_ptr<storage_t> storage_t::create(const config_t& config, const std::
             }
             else if (p.second.get<std::string>("driver") == "crypt") {
                 storage.reset(new crypt_storage_t(p.second, pin, storage));
+            }
+            else if (p.second.get<std::string>("driver") == "shell") {
+                storage.reset(new shell_storage_t(p.second, pin, storage));
             }
         }
     }
