@@ -1,0 +1,12 @@
+#!/bin/sh
+
+if [ -n "$SSH_ASKPASS_PASSWORD" ]; then
+    echo "$SSH_ASKPASS_PASSWORD"
+else
+    export SSH_ASKPASS_PASSWORD="123123123"
+	export SSH_ASKPASS=$0
+
+    [ "$DISPLAY" ] || export DISPLAY=dummydisplay:0
+
+    exec setsid ssh "$@" 
+fi
