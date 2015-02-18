@@ -254,6 +254,9 @@ std::vector<char> piped(const std::string& cmd, const std::vector<char>& input) 
 
         int exitcode;
         waitpid(pid, &exitcode, 0);
+        if (WEXITSTATUS(exitcode) != 0) {
+            throw std::runtime_error("process failed: " + cmd);
+        }
     }
     
     return result;

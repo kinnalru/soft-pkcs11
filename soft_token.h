@@ -43,6 +43,9 @@ public:
 
 private:
   
+    void check_storage();
+    void reset();
+  
     struct Pimpl;
     std::auto_ptr<Pimpl> p_;
 };

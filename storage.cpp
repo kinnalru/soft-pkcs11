@@ -38,6 +38,10 @@ struct fs_storage_t : storage_t {
         return files_iterator(fs::directory_iterator());
     }
     
+    virtual bool present() const {
+        return  fs::exists(path) && fs::is_directory(path);
+    }
+    
     virtual std::list<item_t> items() {
         std::list<item_t> result;
         
@@ -126,9 +130,16 @@ struct shell_storage_t : storage_t {
     shell_storage_t(const config_t& c, const std::string& pin, std::shared_ptr<storage_t> s = std::shared_ptr<storage_t>())
         : storage_t(c, s)
     {
-        list_ = c.get<std::string>("list");        
+        present_ = c.get<std::string>("present");
+        list_ = c.get<std::string>("list");
         read_ = c.get<std::string>("read");
         write_ = c.get<std::string>("write");
+    }
+    
+    virtual bool present() const {
+        int present = start(present_) == 0;
+        st_logf("Shell storage present: %d\n", present);
+        return present;
     }
       
     virtual std::list<item_t> items() {
@@ -169,6 +180,7 @@ struct shell_storage_t : storage_t {
         return read(item.filename);
     }
     
+    std::string present_;
     std::string list_;
     std::string read_;
     std::string write_;
@@ -188,12 +200,20 @@ struct crypt_storage_t : storage_t {
     virtual ~crypt_storage_t() {
     }
     
+    virtual bool present() const {
+        return prev->present();
+    }
+    
     virtual std::list<item_t> items() {
         std::list<item_t> result;
         for(auto item: prev->items()) {
-            const item_t d = decrypt(item);
-            if (!d.data.empty()) {
-                result.push_back(d);
+            try {
+              const item_t d = decrypt(item);
+              if (!d.data.empty()) {
+                  result.push_back(d);
+              }
+            } catch (std::exception& e) {
+                st_logf("Can't decrypt file %s: %s\n", item.filename.c_str(), e.what());
             }
         }
         

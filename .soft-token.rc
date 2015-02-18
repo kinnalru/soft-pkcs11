@@ -2,9 +2,11 @@
 
 [ssh]
 driver=shell
-list=/home/jerry/devel/soft-pkcs/scripts/sshpass -n -t root@192.168.1.102 -C 'ls /mnt/sdcard/keys' 2> /dev/null
-read=/home/jerry/devel/soft-pkcs/scripts/sshpass -n -t root@192.168.1.102 -C 'cat /mnt/sdcard/keys/%FILE%' 2> /dev/null
-write=/home/jerry/devel/soft-pkcs/scripts/sshpass -n -t root@192.168.1.102 -C 'cat > /mnt/sdcard/keys/%FILE%' 2> /dev/null
+#present=ssh root@192.168.42.129 -oPasswordAuthentication=false -oBatchMode=yes exit &> /dev/null
+present=ssh root@192.168.42.129 exit &> /dev/null
+list=/home/jerry/devel/soft-pkcs/scripts/sshpass -n -t root@192.168.42.129 -C 'ls /mnt/sdcard/keys' 2> /dev/null
+read=/home/jerry/devel/soft-pkcs/scripts/sshpass -n -t root@192.168.42.129 -C 'cat /mnt/sdcard/keys/%FILE%' 2> /dev/null
+write=/home/jerry/devel/soft-pkcs/scripts/sshpass -n -t root@192.168.42.129 -C 'cat > /mnt/sdcard/keys/%FILE%' 2> /dev/null
 
 
 #[android fs]

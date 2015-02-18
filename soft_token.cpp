@@ -231,9 +231,7 @@ private:
 
 struct soft_token_t::Pimpl {
   
-    Pimpl() {
-      config.put("path", "default");
-    }
+    Pimpl() {}
     
     /// Find in objects by predicate
     Objects::const_iterator find(std::function<bool(const Attributes&)> pred) const {
@@ -289,16 +287,14 @@ struct soft_token_t::Pimpl {
         return boost::transform_iterator<Trans, It>(e, trans);
     }
 
-    std::vector<int> vi;
-  
     boost::property_tree::ptree config;
     Objects objects;
-    std::string pin;
     
     std::shared_ptr<storage_t> storage;
+    std::string pin;
 };
 
-int read_password (char *buf, int size, int rwflag, void *userdata) {
+int read_password(char *buf, int size, int rwflag, void *userdata) {
     std::string p;
     std::cin >> p;
     std::copy_n(p.begin(), std::min(size, static_cast<int>(p.size())), buf);
@@ -340,51 +336,18 @@ soft_token_t::~soft_token_t()
 
 bool soft_token_t::logged() const
 {
-    return !p_->pin.empty();
+    return p_->storage.get();
 }
 
 bool soft_token_t::login(const std::string& pin)
 {
     try {
-        p_->storage = storage_t::create(p_->config, pin);
-
-        
-        to_attributes convert(p_->objects);
-        for(auto item: p_->storage->items()) {
-            const auto a = p_->objects.insert(convert(item)).first;
-            st_logf("Finded obejcts: %s %lu\n", item.filename.c_str(), a->first);
-        }
-        
-        const CK_OBJECT_CLASS public_key_c = CKO_PUBLIC_KEY;
-        const CK_OBJECT_CLASS private_key_c = CKO_PRIVATE_KEY;
-        
-        for(auto& private_key: p_->objects | filtered(by_attrs({create_object(CKA_CLASS, private_key_c)}))) {
-            
-            auto public_range = p_->objects
-                | filtered(by_attrs({create_object(CKA_CLASS, public_key_c)}))
-//                 | filtered(by_attrs({create_object(AttrSshPublic, bool_true)}))
-                | filtered([&private_key] (const Objects::value_type& pub_key) mutable {
-                    return is_equal(CKA_MODULUS, pub_key, private_key)
-                        || pub_key.second.at(CKA_LABEL).to_string() == (private_key.second.at(CKA_LABEL).to_string() + ".pub");
-                });
-                
-            for (auto& public_key : public_range) {
-                public_key.second[CKA_ID] = private_key.second[CKA_ID];
-                public_key.second[CKA_OBJECT_ID] = private_key.second[CKA_OBJECT_ID];
-            }
-        }
-        
-        for(auto it = p_->objects.begin(); it != p_->objects.end(); ++it ) {
-//             st_logf("  *** Final obejct: %s %s - %s\n", it->second.at(CKA_LABEL)->pValue, std::to_string(it->first).c_str(), it->second.at(CKA_ID).to_string().c_str());
-        }
-        
-        st_logf("Invalid obejct: %lu\n", this->handle_invalid());
-        
         p_->pin = pin;
+        check_storage();
     }
     catch(const std::exception& e) {
         st_logf("Exception: %s\n", e.what());
-        return false;
+        return true;
     }
     
     return true;
@@ -392,9 +355,9 @@ bool soft_token_t::login(const std::string& pin)
 
 void soft_token_t::logout()
 {
+    p_->pin.clear();
     p_->objects.clear();
     p_->storage.reset();
-    p_->pin.clear();
 }
 
 Handles soft_token_t::handles() const
@@ -421,8 +384,6 @@ handle_iterator_t soft_token_t::handles_iterator() const
         }
     });
 }
-
-
 
 handle_iterator_t soft_token_t::find_handles_iterator(Attributes attrs) const
 {
@@ -477,7 +438,8 @@ std::string soft_token_t::read(CK_OBJECT_HANDLE id) const
         if (it->second[AttrSshUnpacked].to_bool()) {
             return it->second[CKA_VALUE].to_string();
         } 
-        
+
+        check_storage();
         const item_t item = p_->storage->read(it->second[AttrFilename].to_string());
         return std::string(item.data.begin(), item.data.end());
     }
@@ -499,6 +461,7 @@ CK_OBJECT_HANDLE soft_token_t::write(const std::string& filename, const std::str
         std::vector<char>(data.begin(), data.end())
     });
     
+    check_storage();
     const item_t item2 = p_->storage->write(item);
     
     const auto a = p_->objects.insert(to_attributes(p_->objects)(item2)).first;
@@ -575,8 +538,70 @@ std::vector<unsigned char> soft_token_t::sign(CK_OBJECT_HANDLE id, CK_MECHANISM_
     return std::vector<unsigned char>();
 }
 
+void soft_token_t::check_storage()
+{
+    if (p_->storage && p_->storage->present()) {
+        st_logf("storage is ok\n");
+        return;
+    }
+    
+    if (p_->storage && !p_->storage->present()) {
+        p_->objects.clear();
+        p_->storage.reset();
+        throw std::runtime_error("token removed");
+    }
+    
+    if (!p_->storage) {
+      
+        if (p_->pin.empty()) {
+            throw std::runtime_error("no pin provided");
+        }
 
+        st_logf("creating storeage...\n");
+        p_->storage = storage_t::create(p_->config, p_->pin);
+        reset();
+    }
+}
 
+void soft_token_t::reset()
+{
+    p_->objects.clear();
+    
+    st_logf("cheking...\n");
+    check_storage();
+    
+    st_logf("cheking... OK\n");
+    to_attributes convert(p_->objects);
+    for(auto item: p_->storage->items()) {
+        const auto a = p_->objects.insert(convert(item)).first;
+        st_logf("Finded obejcts: %s %lu\n", item.filename.c_str(), a->first);
+    }
+    
+    const CK_OBJECT_CLASS public_key_c = CKO_PUBLIC_KEY;
+    const CK_OBJECT_CLASS private_key_c = CKO_PRIVATE_KEY;
+    
+    for(auto& private_key: p_->objects | filtered(by_attrs({create_object(CKA_CLASS, private_key_c)}))) {
+        
+        auto public_range = p_->objects
+            | filtered(by_attrs({create_object(CKA_CLASS, public_key_c)}))
+//                 | filtered(by_attrs({create_object(AttrSshPublic, bool_true)}))
+            | filtered([&private_key] (const Objects::value_type& pub_key) mutable {
+                return is_equal(CKA_MODULUS, pub_key, private_key)
+                    || pub_key.second.at(CKA_LABEL).to_string() == (private_key.second.at(CKA_LABEL).to_string() + ".pub");
+            });
+            
+        for (auto& public_key : public_range) {
+            public_key.second[CKA_ID] = private_key.second[CKA_ID];
+            public_key.second[CKA_OBJECT_ID] = private_key.second[CKA_OBJECT_ID];
+        }
+    }
+    
+    for(auto it = p_->objects.begin(); it != p_->objects.end(); ++it ) {
+//             st_logf("  *** Final obejct: %s %s - %s\n", it->second.at(CKA_LABEL)->pValue, std::to_string(it->first).c_str(), it->second.at(CKA_ID).to_string().c_str());
+    }
+    
+    st_logf("Invalid obejct: %lu\n", this->handle_invalid());
+}
 
 Attributes data_object_attrs(descriptor_p desc, const Attributes& attributes)
 {
