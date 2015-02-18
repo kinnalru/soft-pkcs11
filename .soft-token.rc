@@ -1,5 +1,7 @@
 # Please read README.md
 
+ssh-agent=true
+
 [ssh]
 driver=shell
 #present=ssh root@192.168.42.129 -oPasswordAuthentication=false -oBatchMode=yes exit &> /dev/null

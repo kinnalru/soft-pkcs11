@@ -20,6 +20,8 @@ public:
   
     soft_token_t(const std::string& rcfile);
     ~soft_token_t();
+
+    bool ssh_agent() const;
     
     bool logged() const;
     bool login(const std::string& pin);

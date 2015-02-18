@@ -314,7 +314,9 @@ CK_RV C_FindObjectsInit(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, 
     }
     
     if (!soft_token->logged()) {
-        return CKR_USER_NOT_LOGGED_IN;
+        if (!soft_token->ssh_agent()) {
+            return CKR_USER_NOT_LOGGED_IN;
+        }
     }  
     
 //    print_attributes(pTemplate, ulCount);
@@ -344,14 +346,19 @@ CK_RV C_FindObjects(CK_SESSION_HANDLE hSession,
 {
     st_logf("FindObjects Session: %d ulMaxObjectCount: %d\n", hSession, ulMaxObjectCount);
 
+    st_logf(" f1\n");
     if (ulMaxObjectCount == 0) {
+        st_logf(" f2\n");
         return CKR_ARGUMENTS_BAD;
     }
     
     auto session = session_t::find(hSession);
     if (session == session_t::end()) {
+        st_logf(" f3\n");
         return CKR_SESSION_HANDLE_INVALID;
     }
+    
+    st_logf(" f4\n");
     
     *pulObjectCount = 0;
 
@@ -453,12 +460,11 @@ CK_RV C_Login(CK_SESSION_HANDLE hSession, CK_USER_TYPE userType, CK_UTF8CHAR_PTR
         return CKR_USER_ALREADY_LOGGED_IN;
     }  
 
-    st_logf("Login...\n");
     if (soft_token->login(std::string(reinterpret_cast<char*>(pPin), ulPinLen))) {
-        st_logf("Login OK\n");
         return CKR_OK;    
     }
     else {
+        if (soft_token->ssh_agent()) return CKR_OK;
         return CKR_PIN_INCORRECT;  
     }
 }
@@ -497,6 +503,8 @@ CK_RV C_SignInit(CK_SESSION_HANDLE hSession, CK_MECHANISM_PTR pMechanism, CK_OBJ
     
     const CK_BBOOL bool_true = CK_TRUE;
     
+//     if (soft_token->ssh_agent()) return CKR_KEY_HANDLE_INVALID;
+    
     if (!soft_token->check(hKey, {create_object(CKA_SIGN, bool_true)})) {
         return CKR_ARGUMENTS_BAD;
     }
@@ -533,15 +541,18 @@ CK_RV C_Sign(CK_SESSION_HANDLE hSession,
     if (pSignature == NULL_PTR) {
         return CKR_ARGUMENTS_BAD;
     }
-    
-    const auto signature = soft_token->sign(session->sign_key, session->sign_mechanism.mechanism, pData, ulDataLen);
-    
-    if (signature.size() > pulSignatureLen) {
-        return CKR_BUFFER_TOO_SMALL;
+
+    try {
+        const auto signature = soft_token->sign(session->sign_key, session->sign_mechanism.mechanism, pData, ulDataLen);
+        if (signature.size() > pulSignatureLen) {
+            return CKR_BUFFER_TOO_SMALL;
+        }
+        
+        std::copy(signature.begin(), signature.end(), pSignature);
+        *pulSignatureLen = signature.size();
+    } catch(...) {
+        if (soft_token->ssh_agent()) return CKR_OPERATION_NOT_INITIALIZED;
     }
-    
-    std::copy(signature.begin(), signature.end(), pSignature);
-    *pulSignatureLen = signature.size();
     
     return CKR_OK;
 }

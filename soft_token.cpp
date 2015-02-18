@@ -329,6 +329,11 @@ soft_token_t::soft_token_t(const std::string& rcfile)
     st_logf("Config file: %s\n", rcfile.c_str());
 }
 
+bool soft_token_t::ssh_agent() const
+{
+    return p_->config.get<bool>("ssh-agent", false);
+}
+
 soft_token_t::~soft_token_t()
 {
     p_.reset();
@@ -347,7 +352,7 @@ bool soft_token_t::login(const std::string& pin)
     }
     catch(const std::exception& e) {
         st_logf("Exception: %s\n", e.what());
-        return true;
+        return false;
     }
     
     return true;
@@ -370,6 +375,12 @@ Handles soft_token_t::handles() const
 
 handle_iterator_t soft_token_t::handles_iterator() const
 {
+    try {
+      check_storage();
+    }
+    catch(...) {
+      
+    }
     const auto objects = p_->objects | transformed(boost::bind(&Objects::value_type::first,_1));
     
     auto it = boost::begin(objects);
@@ -387,6 +398,13 @@ handle_iterator_t soft_token_t::handles_iterator() const
 
 handle_iterator_t soft_token_t::find_handles_iterator(Attributes attrs) const
 {
+    try {
+      check_storage();
+    }
+    catch(...) {
+      
+    }
+    
     const auto objects = p_->objects | filtered(by_attrs(attrs)) | transformed(boost::bind(&Objects::value_type::first,_1));
     
     auto it = boost::begin(objects);
