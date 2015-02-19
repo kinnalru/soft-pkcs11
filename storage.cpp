@@ -10,15 +10,20 @@
 
 #include "storage.h"
 #include "tools.h"
+#include "exceptions.h"
 
 namespace fs = boost::filesystem;
 typedef boost::property_tree::ptree config_t;
-
 typedef boost::filter_iterator<std::function<bool(const fs::directory_entry&)>, fs::directory_iterator> files_iterator;
+
+const std::string fs_driver_c = "fs";
+const std::string fuse_driver_c = "fuse";
+const std::string shell_driver_c = "shell";
+const std::string crypt_driver_c = "crypt";
 
 struct fs_storage_t : storage_t {
     fs_storage_t(const config_t& c, const std::string& pin, std::shared_ptr<storage_t> s)
-        : storage_t(c, s) 
+        : storage_t(fs_driver_c, c, s)
     {
         set_pin(pin);
         path = config_.get<std::string>("path");
@@ -44,7 +49,7 @@ struct fs_storage_t : storage_t {
     }
     
     virtual bool present() const {
-        return  fs::exists(path) && fs::is_directory(path);
+        return fs::exists(path) && fs::is_directory(path);
     }
     
     virtual std::list<item_t> items() {
@@ -96,14 +101,6 @@ struct fs_storage_t : storage_t {
         return read(item.filename);
     }
     
-    static std::string id() {
-        return "fs";
-    }
-    
-    virtual std::string name() const {
-        fs_storage_t::id();
-    }
-    
     std::string path;
 };
 
@@ -129,6 +126,7 @@ struct fuse_storage_t : fs_storage_t {
     fuse_storage_t(const config_t& c, const std::string& pin, std::shared_ptr<storage_t> s = std::shared_ptr<storage_t>())
         : fs_storage_t(c, pin, s)
     {
+        name_ = fuse_driver_c;
         set_pin(pin);
     }
     
@@ -142,20 +140,13 @@ struct fuse_storage_t : fs_storage_t {
         if (prev) prev->set_pin(pin);
     }
     
-    static std::string id() {
-        return "fuse";
-    }
-    
-    virtual std::string name() const {
-        fuse_storage_t::id();
-    }
-    
     std::shared_ptr<mount_t> m_;
 };
 
 struct shell_storage_t : storage_t {
     shell_storage_t(const config_t& c, const std::string& pin, std::shared_ptr<storage_t> s = std::shared_ptr<storage_t>())
-        : storage_t(c, s)
+        : storage_t(shell_driver_c, c, s)
+        , timestamp_(0), last_present_(false)
     {
         present_ = c.get<std::string>("present");
         list_ = c.get<std::string>("list");
@@ -170,28 +161,42 @@ struct shell_storage_t : storage_t {
     }
     
     virtual bool present() const {
-        int present = start(present_) == 0;
-        st_logf("Shell storage present: %d\n", present);
-        return present;
+        
+        time_t current = ::time(NULL);
+        if (current - timestamp_ < 3) {
+            if (last_present_) return true;
+        }
+        
+        last_present_ = (start(present_) == 0);
+        st_logf("Shell storage present: %d\n", last_present_);
+        timestamp_ = ::time(NULL);
+        return last_present_;
     }
       
     virtual std::list<item_t> items() {
         std::list<item_t> result;
         
-        auto data = piped(list_);
-        data.push_back(0);
-        
         std::vector<std::string> files;
-        boost::split(files, data, boost::is_any_of("\n"));
+        
+        try {
+            auto data = piped(list_);
+            boost::split(files, data, boost::is_any_of("\n"));
+        }
+        catch (const std::exception& e) {
+            timestamp_ = 0;
+            if (present()) {
+                throw pkcs11_exception_t(CKR_DEVICE_ERROR, std::string("failed to list files: ") + e.what());
+            } else {
+                throw pkcs11_exception_t(CKR_DEVICE_REMOVED, "device removed");
+            }
+        }
         
         for(auto file: files) {
-          try {
-              const item_t item = read(file);
-              if (!item.data.empty()) {
-                result.push_back(item);
-              }
-          } catch(const std::exception& e) {
-          }
+            if (file.empty()) continue;
+            
+            const item_t item = read(file);
+            assert(!item.data.empty());
+            result.push_back(item);
         }
         
         return result;
@@ -200,36 +205,51 @@ struct shell_storage_t : storage_t {
     virtual item_t read(const std::string& fn) {
         std::string read = read_;
         boost::replace_all(read, "%FILE%", fn);
-        return item_t {
-            fn,
-            piped(read)
-        };
+        try {
+            return item_t {
+                fn,
+                piped(read)
+            };
+        }
+        catch(const std::exception& e) {
+            timestamp_ = 0;
+            if (present()) {
+                throw pkcs11_exception_t(CKR_DEVICE_ERROR, std::string("failed to read file: ") + e.what());
+            } else {
+                throw pkcs11_exception_t(CKR_DEVICE_REMOVED, "device removed");
+            }
+        }
     }
     
     virtual item_t write(const item_t& item) {
         std::string write = write_;
         boost::replace_all(write, "%FILE%", item.filename);
-        piped(write, item.data);
+        try {
+            piped(write, item.data);
+        }
+        catch(const std::exception& e) {
+            timestamp_ = 0;
+            if (present()) {
+                throw pkcs11_exception_t(CKR_DEVICE_ERROR, std::string("failed to write file: ") + e.what());
+            } else {
+                throw pkcs11_exception_t(CKR_DEVICE_REMOVED, "device removed");
+            }
+        }
         return read(item.filename);
-    }
-    
-    static std::string id() {
-        return "shell";
-    }
-    
-    virtual std::string name() const {
-        shell_storage_t::id();
     }
     
     std::string present_;
     std::string list_;
     std::string read_;
     std::string write_;
+    
+    mutable time_t timestamp_;
+    mutable bool last_present_;
 };
 
 struct crypt_storage_t : storage_t {
     crypt_storage_t(const config_t& c, const std::string& pin, std::shared_ptr<storage_t> s)
-        : storage_t(c, s)
+        : storage_t(crypt_driver_c, c, s)
     {
         set_pin(pin);
     }
@@ -275,33 +295,30 @@ struct crypt_storage_t : storage_t {
         return decrypt(prev->write(encrypt(item)));
     }
     
-    
-    static std::string id() {
-        return "crypt";
-    }
-    
-    virtual std::string name() const {
-        crypt_storage_t::id();
-    }
-    
-    
     item_t decrypt(const item_t& item) const {
-        return item_t {
-            item.filename,
-            piped(decrypt_, item.data)
-        };
+        try {
+            return item_t {
+                item.filename,
+                piped(decrypt_, item.data)
+            };
+        } catch(const std::exception& e) {
+            throw pkcs11_exception_t(CKR_DEVICE_ERROR, std::string("failed to decrypt file: ") + e.what());
+        }
     }
     
     item_t encrypt(const item_t& item) const {
-        return item_t {
-            item.filename,
-            piped(encrypt_, item.data)
-        };
+        try {
+            return item_t {
+                item.filename,
+                piped(encrypt_, item.data)
+            };
+        } catch(const std::exception& e) {
+            throw pkcs11_exception_t(CKR_DEVICE_ERROR, std::string("failed to decrypt file: ") + e.what());
+        }
     }
     
     std::string decrypt_;
     std::string encrypt_;
-    
 };
 
 
@@ -310,16 +327,16 @@ std::shared_ptr<storage_t> storage_t::create(const config_t& config, const std::
     std::shared_ptr<storage_t> storage;
     BOOST_FOREACH(auto p, config) {
         if (p.second.size() > 0) {
-            if (p.second.get<std::string>("driver") == fs_storage_t::id()) {
+            if (p.second.get<std::string>("driver") == fs_driver_c) {
                 storage.reset(new fs_storage_t(p.second, pin, storage));
             }
-            else if (p.second.get<std::string>("driver") == fuse_storage_t::id()) {
+            else if (p.second.get<std::string>("driver") == fuse_driver_c) {
                 storage.reset(new fuse_storage_t(p.second, pin, storage));
             }
-            else if (p.second.get<std::string>("driver") == crypt_storage_t::id()) {
+            else if (p.second.get<std::string>("driver") == crypt_driver_c) {
                 storage.reset(new crypt_storage_t(p.second, pin, storage));
             }
-            else if (p.second.get<std::string>("driver") == shell_storage_t::id()) {
+            else if (p.second.get<std::string>("driver") == shell_driver_c) {
                 storage.reset(new shell_storage_t(p.second, pin, storage));
             }
         }

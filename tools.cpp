@@ -14,10 +14,12 @@
 #include <sys/wait.h>
 
 #include <iostream>
+#include <system_error>
 
 #include <openssl/bn.h>
 
 #include "tools.h"
+#include "exceptions.h"
 
 int log_fd = 0;
 
@@ -175,12 +177,12 @@ std::vector<char> piped(const std::string& cmd, const std::vector<char>& input) 
 
     if ( (pipe(fd1) < 0) || (pipe(fd2) < 0) || (pipe(fd3) < 0) )
     {
-        throw std::runtime_error("Can't crete pipes for subprocess");
+        throw std::system_error(errno, std::system_category(), "Can't create pipe to subprocess");
     }
     
     if ( (pid = fork()) < 0 )
     {
-        throw std::runtime_error("Can't fork");
+        throw std::system_error(errno, std::system_category(), "Can't create fork subprocess");
     }
     else if (pid == 0)     // CHILD PROCESS
     {
@@ -192,7 +194,6 @@ std::vector<char> piped(const std::string& cmd, const std::vector<char>& input) 
         {
             if (dup2(fd1[0], STDIN_FILENO) != STDIN_FILENO)
             {
-                std::cerr << "dup2 error to stdin" << std::endl;
                 exit(EXIT_FAILURE);
             }
             close(fd1[0]);
@@ -202,7 +203,6 @@ std::vector<char> piped(const std::string& cmd, const std::vector<char>& input) 
         {
             if (dup2(fd2[1], STDOUT_FILENO) != STDOUT_FILENO)
             {
-                std::cerr << "dup2 error to stdout" << std::endl;
                 exit(EXIT_FAILURE);
             }
             close(fd2[1]);
@@ -212,14 +212,12 @@ std::vector<char> piped(const std::string& cmd, const std::vector<char>& input) 
         {
             if (dup2(fd3[1], STDERR_FILENO) != STDERR_FILENO)
             {
-                std::cerr << "dup2 error to stderr" << std::endl;
                 exit(EXIT_FAILURE);
             }
             close(fd3[1]);
         }
 
         execlp("sh", "sh", "-c", cmd.c_str(), 0);
-        std::cerr << "error executing " << cmd << std::endl;
         exit(EXIT_FAILURE);
     }
     else
@@ -232,7 +230,7 @@ std::vector<char> piped(const std::string& cmd, const std::vector<char>& input) 
         if (input.size()) {
             if (write(fd1[1], input.data(), input.size()) != input.size())
             {
-                throw std::runtime_error("subprocess can't read data");
+                throw std::system_error(errno, std::system_category(), "can't write to subprocess");
             }
         }
         
@@ -242,8 +240,8 @@ std::vector<char> piped(const std::string& cmd, const std::vector<char>& input) 
         
         while (true) {
             auto size = read(fd2[0], portion.data(), portion.size());
-            if (size == 1) {
-                throw std::runtime_error("can't read from subprocess");
+            if (size == -1) {
+                throw std::system_error(errno, std::system_category(), "can't read from subprocess");
             } else if (size > 0) {
                 portion.resize(size);
                 result.insert(result.end(), portion.begin(), portion.end());
@@ -263,15 +261,26 @@ std::vector<char> piped(const std::string& cmd, const std::vector<char>& input) 
 }
 
 int start(const std::string& cmd, const std::vector<char>& input) {
-    FILE* f = popen(cmd.c_str(), "w");
-    if (input.size()) {
-        int a = ::fwrite(input.data(), 1, input.size(), f);
-        
-        if (a != input.size()) {
+    FILE* file = NULL;
+    try {
+        file = ::popen(cmd.c_str(), "w");
+
+        if (!file) {
             return -1;
         }
+
+        if (input.size()) {
+            if (::fwrite(input.data(), 1, input.size(), file) != input.size()) {
+                pclose(file);
+                return -1;
+            }
+        }
+        return pclose(file);
     }
-    return pclose(f);
+    catch(...) {
+        pclose(file);
+        return -1;
+    }
 }
 
 

@@ -14,7 +14,10 @@ struct pkcs11_exception_t : std::runtime_error {
     CK_RV rv;
 };
 
-
-
+struct system_exception_t : std::runtime_error {
+    explicit system_exception_t(const std::string& msg)
+      : std::runtime_error(msg)
+    {}
+};
 #endif
 
