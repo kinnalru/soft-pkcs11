@@ -23,10 +23,13 @@ public:
 
     bool ssh_agent() const;
     
+    bool ready() const;
     bool logged() const;
     bool login(const std::string& pin);
     void logout();
 
+    std::string full_name() const;
+    
     Handles handles() const;
     
     handle_iterator_t handles_iterator() const;

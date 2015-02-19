@@ -339,6 +339,20 @@ soft_token_t::~soft_token_t()
     p_.reset();
 }
 
+bool soft_token_t::ready() const
+{
+    try {
+        if (!p_->storage) {
+            p_->storage = storage_t::create(p_->config);
+        }
+        
+        return p_->storage->present();
+    }
+    catch(...) {
+        return false;
+    }
+}
+
 bool soft_token_t::logged() const
 {
     return p_->storage.get();
@@ -363,6 +377,11 @@ void soft_token_t::logout()
     p_->pin.clear();
     p_->objects.clear();
     p_->storage.reset();
+}
+
+std::string soft_token_t::full_name() const
+{
+    p_->storage->full_name();
 }
 
 Handles soft_token_t::handles() const
