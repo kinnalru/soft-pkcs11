@@ -61,6 +61,10 @@ struct session_t {
         return _sessions.end();
     }
     
+    static void clear() {
+        return _sessions.clear();
+    }
+    
     static std::list<session_t>::size_type count() {return _sessions.size();}
 
     operator CK_SESSION_HANDLE() const {return id;}
@@ -110,7 +114,8 @@ CK_RV C_Initialize(CK_VOID_PTR a)
 
 CK_RV C_Finalize(CK_VOID_PTR args)
 {
-    st_logf("Finalize");
+    st_logf("Finalize\n");
+    session_t::clear();
     soft_token.reset();
 
     return CKR_OK;
