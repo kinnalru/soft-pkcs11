@@ -33,10 +33,15 @@ struct storage_t {
     virtual void set_pin(const std::string& pin) = 0;
     
     std::string full_name() const {
+      return "none";
+        std::cerr << "fn: " << this << std::endl;
         if (prev) {
+            std::cerr << "name: " << name() << std::endl;
+            std::cerr << "prev: " << prev->full_name() << std::endl;
             return name() + "|" + prev->full_name();
         }
         else {
+            std::cerr << "name last: " << name() << std::endl;
             return name();
         }
     }
@@ -46,7 +51,7 @@ protected:
     storage_t(const storage_t& other) = delete;
     storage_t& operator=(const storage_t& other) = delete;
     
-    virtual std::string name() const = 0;
+    virtual std::string name() const {return "none";};
 
     std::shared_ptr<storage_t> prev;
     boost::property_tree::ptree config_;

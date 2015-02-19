@@ -25,6 +25,7 @@
 #include "tools.h"
 #include "storage.h"
 #include "soft_token.h"
+#include "exceptions.h"
 
 enum Attribute : CK_ATTRIBUTE_TYPE {
     AttrFilename = CKA_VENDOR_DEFINED + 1,
@@ -77,8 +78,9 @@ struct descriptor_t {
         
         id = to_object_id()(item.filename);
         
+        void* src = const_cast<char*>(item.data.data());
         file.reset(
-            ::fmemopen(item.data.data(), item.data.size(), "r"),
+            ::fmemopen(src, item.data.size(), "r"),
             ::fclose
         );
         
@@ -187,7 +189,7 @@ struct by_attrs : std::unary_function<const Objects::value_type&, bool> {
     
     bool operator()(const Objects::value_type& object_pair) const {
         
-        st_logf("SEARCH FOR ID: %s %s\n", std::to_string(object_pair.first).c_str(), object_pair.second[CKA_LABEL].to_string().c_str());
+        st_logf("SEARCH FOR ID: %s %s\n", std::to_string(object_pair.first).c_str(), object_pair.second.at(CKA_LABEL).to_string().c_str());
         
         for (auto it = attrs.begin(); it != attrs.end(); ++it) {
             const Attributes& object_attrs = object_pair.second;
@@ -355,7 +357,7 @@ bool soft_token_t::ready() const
 
 bool soft_token_t::logged() const
 {
-    return p_->storage.get();
+    return p_->storage.get() && !p_->pin.empty();
 }
 
 bool soft_token_t::login(const std::string& pin)
@@ -363,6 +365,7 @@ bool soft_token_t::login(const std::string& pin)
     try {
         p_->pin = pin;
         check_storage();
+        reset();
     }
     catch(const std::exception& e) {
         st_logf("Exception: %s\n", e.what());
@@ -381,7 +384,7 @@ void soft_token_t::logout()
 
 std::string soft_token_t::full_name() const
 {
-    p_->storage->full_name();
+    return (p_->storage) ? p_->storage->full_name() : "no storage";
 }
 
 Handles soft_token_t::handles() const
@@ -392,7 +395,7 @@ Handles soft_token_t::handles() const
     );
 }
 
-handle_iterator_t soft_token_t::handles_iterator() const
+handle_iterator_t soft_token_t::handles_iterator()
 {
     try {
       check_storage();
@@ -415,7 +418,7 @@ handle_iterator_t soft_token_t::handles_iterator() const
     });
 }
 
-handle_iterator_t soft_token_t::find_handles_iterator(Attributes attrs) const
+handle_iterator_t soft_token_t::find_handles_iterator(Attributes attrs)
 {
     try {
       check_storage();
@@ -467,7 +470,7 @@ bool soft_token_t::check(CK_OBJECT_HANDLE id, const Attributes& attrs) const
     return (it != p_->objects.end()) && by_attrs(attrs)(*it);
 }
 
-std::string soft_token_t::read(CK_OBJECT_HANDLE id) const
+std::string soft_token_t::read(CK_OBJECT_HANDLE id)
 {
     auto it = p_->objects.find(id);
     
@@ -484,7 +487,7 @@ std::string soft_token_t::read(CK_OBJECT_HANDLE id) const
     return std::string();
 }
 
-CK_OBJECT_HANDLE soft_token_t::write(const std::string& filename, const std::string& data) const
+CK_OBJECT_HANDLE soft_token_t::write(const std::string& filename, const std::string& data)
 {
     auto it = std::find_if(p_->objects.begin(), p_->objects.end(),
         by_attrs({create_object(AttrFilename, filename)}));
@@ -505,16 +508,17 @@ CK_OBJECT_HANDLE soft_token_t::write(const std::string& filename, const std::str
     return a->first;
 }
 
-std::vector<unsigned char> soft_token_t::sign(CK_OBJECT_HANDLE id, CK_MECHANISM_TYPE type, CK_BYTE_PTR pData, CK_ULONG ulDataLen) const
+std::vector<unsigned char> soft_token_t::sign(CK_OBJECT_HANDLE id, CK_MECHANISM_TYPE type, CK_BYTE_PTR pData, CK_ULONG ulDataLen)
 {
     auto it = p_->objects.find(id);
     
     if (it == p_->objects.end()) throw std::runtime_error("err");
     
-    const auto data = read(id);
+    const auto str = read(id);
+    std::vector<char> data(str.begin(), str.end());
     
     std::shared_ptr<FILE> file(
-        ::fmemopen(data.c_str(), data.size(), "r"),
+        ::fmemopen(data.data(), data.size(), "r"),
         ::fclose
     );
     
@@ -578,6 +582,7 @@ std::vector<unsigned char> soft_token_t::sign(CK_OBJECT_HANDLE id, CK_MECHANISM_
 void soft_token_t::check_storage()
 {
     if (p_->storage && p_->storage->present()) {
+        p_->storage->set_pin(p_->pin);
         st_logf("storage is ok\n");
         return;
     }
@@ -585,16 +590,16 @@ void soft_token_t::check_storage()
     if (p_->storage && !p_->storage->present()) {
         p_->objects.clear();
         p_->storage.reset();
-        throw std::runtime_error("token removed");
+        throw pkcs11_exception_t(CKR_DEVICE_REMOVED, "token removed");
     }
     
     if (!p_->storage) {
       
         if (p_->pin.empty()) {
-            throw std::runtime_error("no pin provided");
+            throw pkcs11_exception_t(CKR_USER_NOT_LOGGED_IN, "no pin provided");
         }
 
-        st_logf("creating storeage...\n");
+        st_logf("creating storage...\n");
         p_->storage = storage_t::create(p_->config, p_->pin);
         reset();
     }
@@ -636,8 +641,6 @@ void soft_token_t::reset()
     for(auto it = p_->objects.begin(); it != p_->objects.end(); ++it ) {
 //             st_logf("  *** Final obejct: %s %s - %s\n", it->second.at(CKA_LABEL)->pValue, std::to_string(it->first).c_str(), it->second.at(CKA_ID).to_string().c_str());
     }
-    
-    st_logf("Invalid obejct: %lu\n", this->handle_invalid());
 }
 
 Attributes data_object_attrs(descriptor_p desc, const Attributes& attributes)
@@ -819,7 +822,7 @@ Attributes rsa_private_key_attrs(descriptor_p desc, const Attributes& attributes
         create_object(CKA_KEY_TYPE,  type),
     };
     
-    if (EVP_PKEY *pkey = PEM_read_PrivateKey(desc->file.get(), NULL, NULL, "")) {
+    if (EVP_PKEY *pkey = PEM_read_PrivateKey(desc->file.get(), NULL, NULL, const_cast<char*>(""))) {
         int size = 0;
         std::shared_ptr<unsigned char> buf;
         
