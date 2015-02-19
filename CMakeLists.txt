@@ -11,7 +11,7 @@ if(CMAKE_BUILD_TYPE STREQUAL Debug)
 endif()
     add_definitions(-DDEBUG)
 
-add_definitions("-std=c++0x -std=c++11 -fpermissive")
+add_definitions("-std=c++0x -std=c++11")
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 

@@ -34,7 +34,7 @@ void st_logf(const char* fmt, ...)
     vdprintf(log_fd, fmt, ap);    
     va_end(ap); 
     
-    fsync(log_fd);
+//     fsync(log_fd);
 }
  
 void print_attributes(const CK_ATTRIBUTE *attributes, CK_ULONG num_attributes)
@@ -111,7 +111,7 @@ std::pair<int, std::shared_ptr<unsigned char>> read_bignum(void* ssl_bignum)
     int size = BN_num_bytes(b);
     assert(size > 0);
 
-    std::shared_ptr<unsigned char> buff(malloc(size), free);
+    std::shared_ptr<unsigned char> buff(static_cast<unsigned char*>(malloc(size)), free);
     assert(buff.get() != NULL);
 
     int rc = BN_bn2bin(b, buff.get());

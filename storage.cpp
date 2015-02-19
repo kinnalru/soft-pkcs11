@@ -20,6 +20,7 @@ struct fs_storage_t : storage_t {
     fs_storage_t(const config_t& c, const std::string& pin, std::shared_ptr<storage_t> s)
         : storage_t(c, s) 
     {
+        set_pin(pin);
         path = config_.get<std::string>("path");
         st_logf("Path : %s\n", path.c_str());
     }
@@ -36,6 +37,10 @@ struct fs_storage_t : storage_t {
     
     files_iterator files_end() const {
         return files_iterator(fs::directory_iterator());
+    }
+    
+    virtual void set_pin(const std::string& pin) {
+        if (prev) prev->set_pin(pin);
     }
     
     virtual bool present() const {
@@ -91,6 +96,14 @@ struct fs_storage_t : storage_t {
         return read(item.filename);
     }
     
+    static std::string id() {
+        return "fs";
+    }
+    
+    virtual std::string name() const {
+        fs_storage_t::id();
+    }
+    
     std::string path;
 };
 
@@ -116,11 +129,25 @@ struct fuse_storage_t : fs_storage_t {
     fuse_storage_t(const config_t& c, const std::string& pin, std::shared_ptr<storage_t> s = std::shared_ptr<storage_t>())
         : fs_storage_t(c, pin, s)
     {
-        const std::string mount = c.get<std::string>("mount");
-        const std::string umount = c.get<std::string>("umount");
+        set_pin(pin);
+    }
+    
+    virtual void set_pin(const std::string& pin) {
+        const std::string mount = config_.get<std::string>("mount");
+        const std::string umount = config_.get<std::string>("umount");      
         
         st_logf("Mount: %s, Umount: %s\n", mount.c_str(), umount.c_str());
         m_.reset(new mount_t(mount, umount, pin));
+        
+        if (prev) prev->set_pin(pin);
+    }
+    
+    static std::string id() {
+        return "fuse";
+    }
+    
+    virtual std::string name() const {
+        fuse_storage_t::id();
     }
     
     std::shared_ptr<mount_t> m_;
@@ -134,6 +161,12 @@ struct shell_storage_t : storage_t {
         list_ = c.get<std::string>("list");
         read_ = c.get<std::string>("read");
         write_ = c.get<std::string>("write");
+        
+        set_pin(pin);
+    }
+    
+    virtual void set_pin(const std::string& pin) {
+        if (prev) prev->set_pin(pin);
     }
     
     virtual bool present() const {
@@ -180,6 +213,14 @@ struct shell_storage_t : storage_t {
         return read(item.filename);
     }
     
+    static std::string id() {
+        return "shell";
+    }
+    
+    virtual std::string name() const {
+        shell_storage_t::id();
+    }
+    
     std::string present_;
     std::string list_;
     std::string read_;
@@ -190,14 +231,20 @@ struct crypt_storage_t : storage_t {
     crypt_storage_t(const config_t& c, const std::string& pin, std::shared_ptr<storage_t> s)
         : storage_t(c, s)
     {
-        encrypt_ = c.get<std::string>("encrypt");        
-        decrypt_ = c.get<std::string>("decrypt");
-        
-        boost::replace_all(encrypt_, "%PIN%", pin);
-        boost::replace_all(decrypt_, "%PIN%", pin);
+        set_pin(pin);
     }
     
     virtual ~crypt_storage_t() {
+    }
+    
+    virtual void set_pin(const std::string& pin) {
+        encrypt_ = config_.get<std::string>("encrypt");        
+        decrypt_ = config_.get<std::string>("decrypt");
+        
+        boost::replace_all(encrypt_, "%PIN%", pin);
+        boost::replace_all(decrypt_, "%PIN%", pin);
+        
+        if (prev) prev->set_pin(pin);
     }
     
     virtual bool present() const {
@@ -229,6 +276,14 @@ struct crypt_storage_t : storage_t {
     }
     
     
+    static std::string id() {
+        return "crypt";
+    }
+    
+    virtual std::string name() const {
+        crypt_storage_t::id();
+    }
+    
     
     item_t decrypt(const item_t& item) const {
         return item_t {
@@ -255,16 +310,16 @@ std::shared_ptr<storage_t> storage_t::create(const config_t& config, const std::
     std::shared_ptr<storage_t> storage;
     BOOST_FOREACH(auto p, config) {
         if (p.second.size() > 0) {
-            if (p.second.get<std::string>("driver") == "fs") {
+            if (p.second.get<std::string>("driver") == fs_storage_t::id()) {
                 storage.reset(new fs_storage_t(p.second, pin, storage));
             }
-            else if (p.second.get<std::string>("driver") == "fuse") {
+            else if (p.second.get<std::string>("driver") == fuse_storage_t::id()) {
                 storage.reset(new fuse_storage_t(p.second, pin, storage));
             }
-            else if (p.second.get<std::string>("driver") == "crypt") {
+            else if (p.second.get<std::string>("driver") == crypt_storage_t::id()) {
                 storage.reset(new crypt_storage_t(p.second, pin, storage));
             }
-            else if (p.second.get<std::string>("driver") == "shell") {
+            else if (p.second.get<std::string>("driver") == shell_storage_t::id()) {
                 storage.reset(new shell_storage_t(p.second, pin, storage));
             }
         }
