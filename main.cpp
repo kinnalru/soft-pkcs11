@@ -324,6 +324,35 @@ CK_RV C_CloseSession(CK_SESSION_HANDLE hSession)
     return CKR_OK;
 }
 
+CK_RV C_GetSessionInfo(CK_SESSION_HANDLE hSession, CK_SESSION_INFO_PTR pInfo)
+{
+    st_logf(" ** C_GetSessionInfo\n");
+    
+    if (!soft_token->ready()) {
+        return CKR_DEVICE_REMOVED;
+    }
+    
+    auto session = session_t::find(hSession);
+    if (session == session_t::end()) {
+        return CKR_SESSION_HANDLE_INVALID;
+    }
+
+    memset(pInfo, 20, sizeof(*pInfo));
+
+    pInfo->slotID = 1;
+    if (soft_token->logged()) {
+        pInfo->state = CKS_RO_USER_FUNCTIONS;
+    }
+    else {
+        pInfo->state = CKS_RO_PUBLIC_SESSION;
+    }
+    
+    pInfo->flags = CKF_SERIAL_SESSION;
+    pInfo->ulDeviceError = 0;
+
+    return CKR_OK;
+}
+
 CK_RV C_FindObjectsInit(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, CK_ULONG ulCount)
 {
     st_logf(" ** C_FindObjectsInit: Session: %d ulCount: %d\n", hSession, ulCount);
@@ -738,7 +767,7 @@ CK_FUNCTION_LIST funcs = {
     C_OpenSession,
     C_CloseSession,
         reinterpret_cast<CK_C_CloseAllSessions>(func_t<4>::not_supported), //C_CloseAllSessions,
-        reinterpret_cast<CK_C_GetSessionInfo>(func_t<5>::not_supported), //C_GetSessionInfo,
+    C_GetSessionInfo,
     reinterpret_cast<CK_C_GetOperationState>(func_t<6>::not_supported), /* C_GetOperationState */
     reinterpret_cast<CK_C_SetOperationState>(func_t<7>::not_supported), /* C_SetOperationState */
     C_Login,
