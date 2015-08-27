@@ -537,12 +537,15 @@ CK_RV C_Login(CK_SESSION_HANDLE hSession, CK_USER_TYPE userType, CK_UTF8CHAR_PTR
 //         }
         return CKR_USER_ALREADY_LOGGED_IN;
     }  
+    st_logf(" NOT\n");
 
     if (soft_token->login(std::string(reinterpret_cast<char*>(pPin), ulPinLen))) {
+        st_logf(" OK\n");
         return CKR_OK;    
     }
     else {
         if (soft_token->ssh_agent()) return CKR_OK;
+        st_logf(" ERR\n");
         return CKR_PIN_INCORRECT;  
     }
 }
@@ -679,6 +682,13 @@ CK_RV C_SignFinal(CK_SESSION_HANDLE hSession, CK_BYTE_PTR pSignature, CK_ULONG_P
     return CKR_OK;
 }
 
+#include <openssl/err.h>
+#include <openssl/evp.h>
+#include <openssl/pem.h>
+#include <openssl/rand.h>
+#include <openssl/x509.h>
+#include <openssl/md5.h>
+
 CK_RV C_CreateObject(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, CK_ULONG ulCount, CK_OBJECT_HANDLE_PTR phObject)
 {
     st_logf("C_CreateObject\n");
@@ -708,11 +718,48 @@ CK_RV C_CreateObject(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, CK_
         if(pTemplate[i].type == CKA_LABEL) {
             label = attribute_t(pTemplate[i]).to_string();
         }
+        if(pTemplate[i].type == CKA_CLASS) {
+            CK_OBJECT_CLASS klass = *((CK_OBJECT_CLASS*)pTemplate[i].pValue);
+            if (klass == CKO_PUBLIC_KEY) {
+                
+                Attributes attrs;
+    
+                for (CK_ULONG i = 0; i < ulCount; i++) {
+                    attrs[pTemplate[i].type] = pTemplate[i];
+                }
+                
+                RSA * pubkey = RSA_new();
+                
+                BIGNUM* modul = BN_bin2bn(attrs[CKA_MODULUS].value<const unsigned char*>(), attrs[CKA_MODULUS]->ulValueLen, NULL);
+                BIGNUM* expon = BN_bin2bn(attrs[CKA_PUBLIC_EXPONENT].value<const unsigned char*>(), attrs[CKA_PUBLIC_EXPONENT]->ulValueLen, NULL);
+                
+                pubkey->e = expon;
+                pubkey->n = modul;
+                
+                EVP_PKEY* pRsaKey = EVP_PKEY_new();
+                st_logf("assign: %d\n", EVP_PKEY_assign_RSA(pRsaKey, pubkey));
+             
+                char *buf;
+                size_t *size = new size_t(0);
+                
+                auto file = write_mem(&buf, size);
+                st_logf("write: %d\n", PEM_write_PUBKEY(file.get(), pRsaKey));
+                
+                file.reset();
+
+                value = std::string(buf, *size);
+
+            }
+        }
     }
     
     if (label.empty()) {
         return CKR_TEMPLATE_INCOMPLETE;
     }
+    
+    print_attributes(pTemplate, ulCount);
+    
+    st_logf("write error: %s  -  %s\n", label.c_str(), value.c_str());
     
     try {
       id = soft_token->write(label, value);    

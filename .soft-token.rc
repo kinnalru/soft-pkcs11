@@ -1,24 +1,5 @@
-# Please read README.md
-
-ssh-agent=true
 
 [ssh]
-driver=shell
-#present=ssh root@192.168.42.129 -oPasswordAuthentication=false -oBatchMode=yes exit &> /dev/null
-present=ssh root@192.168.1.102 -oConnectTimeout=5 exit &> /dev/null
-list=/home/jerry/devel/soft-pkcs/scripts/sshpass -n -t root@192.168.1.102 -C 'ls /mnt/sdcard/keys' 2> /dev/null
-read=/home/jerry/devel/soft-pkcs/scripts/sshpass -n -t root@192.168.1.102 -C 'cat /mnt/sdcard/keys/%FILE%' 2> /dev/null
-write=/home/jerry/devel/soft-pkcs/scripts/sshpass -n -t root@192.168.1.102 -C 'cat > /mnt/sdcard/keys/%FILE%' 2> /dev/null
-
-
-#[android fs]
-#driver=fuse
-#mount=echo "123123123" | sshfs -o password_stdin root@192.168.42.129:/mnt/sdcard/keys /home/jerry/.soft-pkcs11/sshfs &> /dev/null
-#umount=fusermount -u /home/jerry/.soft-pkcs11/sshfs &> /dev/null
-#path=/home/jerry/.soft-pkcs11/sshfs
-
-[openssl]
-driver=crypt
-decrypt=/usr/bin/openssl enc -d -base64 -aes-256-cbc -k '%PIN%'
-encrypt=/usr/bin/openssl enc -base64 -aes-256-cbc -k '%PIN%'
+driver=fs
+path=/home/jerry/devel/jerry/pscs/soft-pkcs/keys2
 

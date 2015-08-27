@@ -363,9 +363,13 @@ bool soft_token_t::logged() const
 bool soft_token_t::login(const std::string& pin)
 {
     try {
+        st_logf(" log 1\n");
         p_->pin = pin;
+        st_logf(" log 2\n");
         check_storage();
+        st_logf(" log 3\n");
         reset();
+        st_logf(" log 4\n");
     }
     catch(const std::exception& e) {
         st_logf("Exception: %s\n", e.what());
@@ -622,8 +626,9 @@ void soft_token_t::reset()
     const CK_OBJECT_CLASS public_key_c = CKO_PUBLIC_KEY;
     const CK_OBJECT_CLASS private_key_c = CKO_PRIVATE_KEY;
     
+     st_logf("r1\n");
     for(auto& private_key: p_->objects | filtered(by_attrs({create_object(CKA_CLASS, private_key_c)}))) {
-        
+        st_logf("r2\n");
         auto public_range = p_->objects
             | filtered(by_attrs({create_object(CKA_CLASS, public_key_c)}))
 //                 | filtered(by_attrs({create_object(AttrSshPublic, bool_true)}))
@@ -631,13 +636,16 @@ void soft_token_t::reset()
                 return is_equal(CKA_MODULUS, pub_key, private_key)
                     || pub_key.second.at(CKA_LABEL).to_string() == (private_key.second.at(CKA_LABEL).to_string() + ".pub");
             });
-            
+        
+        st_logf("r3\n");
         for (auto& public_key : public_range) {
             public_key.second[CKA_ID] = private_key.second[CKA_ID];
             public_key.second[CKA_OBJECT_ID] = private_key.second[CKA_OBJECT_ID];
         }
+        st_logf("r4\n");
     }
     
+    st_logf("r5\n");
     for(auto it = p_->objects.begin(); it != p_->objects.end(); ++it ) {
 //             st_logf("  *** Final obejct: %s %s - %s\n", it->second.at(CKA_LABEL)->pValue, std::to_string(it->first).c_str(), it->second.at(CKA_ID).to_string().c_str());
     }

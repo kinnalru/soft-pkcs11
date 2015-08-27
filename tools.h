@@ -21,6 +21,9 @@ std::vector<char> read_all(std::shared_ptr<FILE> file);
 
 std::shared_ptr<FILE> read_mem(const std::vector<char>& data);
 
+std::shared_ptr<FILE> write_mem(char **buf, size_t *size);
+
+
 std::string read_password();
 
 std::vector<char> piped(const std::string& cmd, const std::vector<char>& input = std::vector<char>());

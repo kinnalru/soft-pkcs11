@@ -136,13 +136,22 @@ std::vector<char> read_all(std::shared_ptr<FILE> file)
     return data;
 }
 
-std::shared_ptr< FILE > read_mem(const std::vector< char >& data)
+std::shared_ptr<FILE> read_mem(const std::vector< char >& data)
 {
     return std::shared_ptr<FILE>(
         ::fmemopen(const_cast<char*>(data.data()), data.size(), "r"),
         ::fclose
     );
 }
+
+std::shared_ptr<FILE> write_mem(char **buf, size_t *size)
+{
+    return std::shared_ptr<FILE>(
+        ::open_memstream(buf, size),
+        ::fclose
+    );
+}
+
 
 void set_stdin_echo(bool enable)
 {

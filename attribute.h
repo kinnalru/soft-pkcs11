@@ -38,6 +38,11 @@ struct attribute_t {
         return &attr_;
     }
     
+    template<typename T>
+    inline T value() const {
+        return reinterpret_cast<T>(attr_.pValue);
+    }
+    
     inline const std::string to_string() const {
         return std::string(reinterpret_cast<char*>(attr_.pValue), attr_.ulValueLen);
     }
