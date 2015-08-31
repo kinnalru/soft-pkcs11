@@ -471,7 +471,7 @@ CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, 
     
    
     st_logf(" input ");
-    //print_attributes(pTemplate, ulCount);
+    print_attributes(pTemplate, ulCount);
 
     auto attrs = soft_token->attributes(hObject);
     

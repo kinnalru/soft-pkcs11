@@ -48,20 +48,27 @@ void print_attributes(const CK_ATTRIBUTE *attributes, CK_ULONG num_attributes)
     for (i = 0; i < num_attributes; i++) {
         switch (attributes[i].type) {
         case CKA_TOKEN: {
+            st_logf("1\n");
             if (attributes[i].ulValueLen != sizeof(CK_BBOOL)) {
+                st_logf("2\n");
                 st_logf("  * token attribute(%d) wrong length size: <%d>\n", CKA_TOKEN, attributes[i].ulValueLen);
                 break;
             }
+            st_logf("3\n");
             st_logf("  * type: <token> size: <%d> value: <%s>\n", attributes[i].ulValueLen, *((CK_BBOOL*)attributes[i].pValue) ? "TRUE" : "FALSE");
             break;
         }
         case CKA_CLASS: {
             
+            st_logf("4\n");
             if (attributes[i].ulValueLen != sizeof(CK_ULONG)) {
+                st_logf("5\n");
                 st_logf("  * token attribute(%d) wrong length size: <%d>\n", CKA_CLASS, attributes[i].ulValueLen);
                 break;
             }
+            st_logf("6\n");
             CK_OBJECT_CLASS klass = *((CK_OBJECT_CLASS*)attributes[i].pValue);
+            st_logf("7\n");
             switch (klass) {
             case CKO_CERTIFICATE:
                 st_logf("  * type: <class> size: <%d> value: <%s>\n", attributes[i].ulValueLen, "certificate");
@@ -85,9 +92,11 @@ void print_attributes(const CK_ATTRIBUTE *attributes, CK_ULONG num_attributes)
             break;
         }
         case CKA_PRIVATE:
+            st_logf("8\n");
             st_logf("  * type: <private> size: <%d>\n", attributes[i].ulValueLen);
             break;
         case CKA_LABEL:
+            st_logf("9\n");
             st_logf("  * type: <label> size: <%d> value: <%s>\n", attributes[i].ulValueLen, attributes[i].pValue);
             break;
         case CKA_APPLICATION:
@@ -97,10 +106,20 @@ void print_attributes(const CK_ATTRIBUTE *attributes, CK_ULONG num_attributes)
             st_logf("  * type: <value> size: <%d>\n", attributes[i].ulValueLen);
             break;
         case CKA_ID:
-            st_logf("  * type: <key id> size: <%d> value: <%lu>\n", attributes[i].ulValueLen, *((CK_OBJECT_HANDLE*)attributes[i].pValue));
+            if (reinterpret_cast<CK_ULONG>(attributes[i].pValue)) {
+                st_logf("  * type: <key id> size: <%d> value: <%lu>\n", attributes[i].ulValueLen, *(CK_OBJECT_HANDLE*)attributes[i].pValue);
+            } else {
+                st_logf("  * type: <key id> size: <%d> value: <%lu>\n", attributes[i].ulValueLen, (CK_OBJECT_HANDLE*)attributes[i].pValue);
+            }
+            
             break;
         case CKA_OBJECT_ID:
-            st_logf("  * type: <id> size: <%d> value: <%lu>\n", attributes[i].ulValueLen, *((CK_OBJECT_HANDLE*)attributes[i].pValue));
+            if (reinterpret_cast<CK_ULONG>(attributes[i].pValue)) {
+                st_logf("  * type: <id> size: <%d> value: <%lu>\n", attributes[i].ulValueLen, *(CK_OBJECT_HANDLE*)attributes[i].pValue);
+            } else {
+                st_logf("  * type: <id> size: <%d> value: <%lu>\n", attributes[i].ulValueLen, (CK_OBJECT_HANDLE*)attributes[i].pValue);
+            }
+
             break;
         default:
             st_logf("  * type: <UNKNOWN> size: <%d> type: [0x%08lx]\n", attributes[i].ulValueLen, attributes[i].type);
