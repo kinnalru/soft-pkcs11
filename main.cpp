@@ -372,7 +372,7 @@ CK_RV C_FindObjectsInit(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, 
         }
     }  
     
-//    print_attributes(pTemplate, ulCount);
+    print_attributes(pTemplate, ulCount);
     
     if (ulCount) {
         
@@ -471,7 +471,7 @@ CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, 
     
    
     st_logf(" input ");
-    print_attributes(pTemplate, ulCount);
+    //print_attributes(pTemplate, ulCount);
 
     auto attrs = soft_token->attributes(hObject);
     
@@ -514,7 +514,7 @@ CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, 
     }
     
     st_logf(" output ");
-    print_attributes(pTemplate, ulCount);
+    //print_attributes(pTemplate, ulCount);
     return CKR_OK;
 }
 
@@ -709,46 +709,30 @@ CK_RV C_CreateObject(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, CK_
     CK_OBJECT_HANDLE id = soft_token_t::handle_invalid();
     
     std::string label;
-    std::string value;
+    std::vector<unsigned char> value;
     
+    std::string suf;
+   
     for (int i = 0; i < ulCount; i++) {
         if(pTemplate[i].type == CKA_VALUE) {
-            value = attribute_t(pTemplate[i]).to_string();
+            value = attribute_t(pTemplate[i]).to_bytes();
         }
         if(pTemplate[i].type == CKA_LABEL) {
             label = attribute_t(pTemplate[i]).to_string();
         }
         if(pTemplate[i].type == CKA_CLASS) {
             CK_OBJECT_CLASS klass = *((CK_OBJECT_CLASS*)pTemplate[i].pValue);
+            
+            Attributes attrs;
+            for (CK_ULONG i = 0; i < ulCount; i++) {
+                attrs[pTemplate[i].type] = pTemplate[i];
+            }            
             if (klass == CKO_PUBLIC_KEY) {
-                
-                Attributes attrs;
-    
-                for (CK_ULONG i = 0; i < ulCount; i++) {
-                    attrs[pTemplate[i].type] = pTemplate[i];
-                }
-                
-                RSA * pubkey = RSA_new();
-                
-                BIGNUM* modul = BN_bin2bn(attrs[CKA_MODULUS].value<const unsigned char*>(), attrs[CKA_MODULUS]->ulValueLen, NULL);
-                BIGNUM* expon = BN_bin2bn(attrs[CKA_PUBLIC_EXPONENT].value<const unsigned char*>(), attrs[CKA_PUBLIC_EXPONENT]->ulValueLen, NULL);
-                
-                pubkey->e = expon;
-                pubkey->n = modul;
-                
-                EVP_PKEY* pRsaKey = EVP_PKEY_new();
-                st_logf("assign: %d\n", EVP_PKEY_assign_RSA(pRsaKey, pubkey));
-             
-                char *buf;
-                size_t *size = new size_t(0);
-                
-                auto file = write_mem(&buf, size);
-                st_logf("write: %d\n", PEM_write_PUBKEY(file.get(), pRsaKey));
-                
-                file.reset();
-
-                value = std::string(buf, *size);
-
+                value = soft_token->create_key(klass, attrs);
+                suf = ".pub";
+            }
+            else if(klass == CKO_PRIVATE_KEY) {
+                value = soft_token->create_key(klass, attrs);
             }
         }
     }
@@ -756,10 +740,11 @@ CK_RV C_CreateObject(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, CK_
     if (label.empty()) {
         return CKR_TEMPLATE_INCOMPLETE;
     }
+
+    label = label + suf;
     
     print_attributes(pTemplate, ulCount);
-    
-    st_logf("write error: %s  -  %s\n", label.c_str(), value.c_str());
+    st_logf("WRITE: %s  -  %s\n", label.c_str(), value.data());
     
     try {
       id = soft_token->write(label, value);    
@@ -777,6 +762,7 @@ CK_RV C_CreateObject(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, CK_
     
     if (id != soft_token_t::handle_invalid()) {
         *phObject = id;
+        st_logf("object created %lu\n", id);
         return CKR_OK;
     }
     

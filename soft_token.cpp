@@ -78,6 +78,8 @@ struct descriptor_t {
         
         id = to_object_id()(item.filename);
         
+        st_logf("File: %s hash %lu\n", item.filename.c_str(), id);
+        
         void* src = const_cast<char*>(item.data.data());
         file.reset(
             ::fmemopen(src, item.data.size(), "r"),
@@ -160,15 +162,15 @@ struct to_attributes : std::unary_function<const fs::directory_entry&, Objects::
             {
                 //create additional unpacked key
                 attrs[AttrSshUnpacked] = attribute_t(AttrSshUnpacked, bool_true);
-                attrs[CKA_OBJECT_ID] = attribute_t(CKA_OBJECT_ID,  std::to_string(desc->id - 1));
-                attrs[CKA_ID] = attribute_t(CKA_ID,  std::to_string(desc->id - 1));
+                attrs[CKA_OBJECT_ID] = attribute_t(CKA_OBJECT_ID,  desc->id - 1);
+                attrs[CKA_ID] = attribute_t(CKA_ID,  desc->id - 1);
                 objects.insert(std::make_pair(desc->id - 1, attrs)).first->first;
             };
             
             attrs.erase(AttrSshUnpacked);
             attrs.erase(CKA_VALUE);
-            attrs[CKA_OBJECT_ID] = attribute_t(CKA_OBJECT_ID,  std::to_string(desc->id));
-            attrs[CKA_ID] = attribute_t(CKA_ID,  std::to_string(desc->id));
+            attrs[CKA_OBJECT_ID] = attribute_t(CKA_OBJECT_ID,  desc->id);
+            attrs[CKA_ID] = attribute_t(CKA_ID,  desc->id);
             attrs[CKA_LABEL] = attribute_t(CKA_LABEL, "SSH " + attrs[CKA_LABEL].to_string());
             attrs[AttrSshPublic] = attribute_t(AttrSshPublic, bool_true);
         }
@@ -180,6 +182,8 @@ struct to_attributes : std::unary_function<const fs::directory_entry&, Objects::
             attrs = rsa_private_key_attrs(desc, attrs);
         }
         
+        st_logf("      - ID[%lu] - ID[%lu]\n", desc->id, attrs[CKA_OBJECT_ID].to_handle());      
+        
         return std::make_pair(desc->id, attrs);
     }
 };
@@ -189,27 +193,31 @@ struct by_attrs : std::unary_function<const Objects::value_type&, bool> {
     
     bool operator()(const Objects::value_type& object_pair) const {
         
-        st_logf("SEARCH FOR ID: %s %s\n", std::to_string(object_pair.first).c_str(), object_pair.second.at(CKA_LABEL).to_string().c_str());
+        CK_OBJECT_HANDLE h = object_pair.second.at(CKA_OBJECT_ID).to_handle();
+        
+        st_logf("    * SCAN object: %s [%lu] [%lu]\n", object_pair.second.at(CKA_LABEL).to_string().c_str(), object_pair.first, h);
         
         for (auto it = attrs.begin(); it != attrs.end(); ++it) {
             const Attributes& object_attrs = object_pair.second;
             
-            st_logf("----- compare attr type:: %d\n", it->first);        
+            st_logf("      - compare attr type:: [0x%08lx]\n", it->first);        
             
             auto fnd = object_attrs.find(it->first);
             if (fnd != object_attrs.end()) {
                 if (fnd->second != it->second) {
-                    st_logf("attr type %d NOT EQUAL %lu -- %lu\n", it->first, *((CK_ULONG*)it->second->pValue), *((CK_ULONG*)fnd->second->pValue));
+                    st_logf("        - attr type [0x%08lx] NOT equal %lu -- %lu\n", it->first, *((CK_ULONG*)it->second->pValue), *((CK_ULONG*)fnd->second->pValue));
                     return false;
+                } else {
+                    st_logf("        - attr type [0x%08lx] EQUAL %lu -- %lu\n", it->first, it->second.to_handle(), fnd->second.to_handle());
                 }
             }
             else {
-                st_logf("attr type %d NOT FOUND\n", it->first);
+                st_logf("        - attr type [0x%08lx] NOT FOUND\n", it->first);
                 return false;
             }
         }
         
-        st_logf("object MATCH\n");
+        st_logf("    * object MATCH\n");
         return true;
     };
     
@@ -491,7 +499,7 @@ std::string soft_token_t::read(CK_OBJECT_HANDLE id)
     return std::string();
 }
 
-CK_OBJECT_HANDLE soft_token_t::write(const std::string& filename, const std::string& data)
+CK_OBJECT_HANDLE soft_token_t::write(const std::string& filename, const std::vector<unsigned char>& data)
 {
     auto it = std::find_if(p_->objects.begin(), p_->objects.end(),
         by_attrs({create_object(AttrFilename, filename)}));
@@ -583,6 +591,79 @@ std::vector<unsigned char> soft_token_t::sign(CK_OBJECT_HANDLE id, CK_MECHANISM_
     return std::vector<unsigned char>();
 }
 
+std::unique_ptr<BIGNUM, void(*)(BIGNUM*)> parse_bignum(CK_ATTRIBUTE_TYPE key, const Attributes& attrs) {
+    if (attrs.find(key) != attrs.end()) {
+        return std::unique_ptr<BIGNUM, void(*)(BIGNUM*)>(
+            BN_bin2bn(attrs.at(key).value<const unsigned char*>(), attrs.at(key)->ulValueLen, NULL),
+            BN_free 
+        );
+    } else {
+       return std::unique_ptr<BIGNUM, void(*)(BIGNUM*)>(NULL, BN_free); 
+    }
+}
+
+
+std::vector<unsigned char> soft_token_t::create_key(CK_OBJECT_CLASS klass, const Attributes& attrs) const
+{
+    std::unique_ptr<RSA, void(*)(RSA*)> pubkey(RSA_new(), RSA_free);
+    
+    std::unique_ptr<BIGNUM, void(*)(BIGNUM*)> modul = parse_bignum(CKA_MODULUS, attrs);
+    std::unique_ptr<BIGNUM, void(*)(BIGNUM*)> expon = parse_bignum(CKA_PUBLIC_EXPONENT, attrs);
+    
+    std::unique_ptr<BIGNUM, void(*)(BIGNUM*)> priv_expon = parse_bignum(CKA_PRIVATE_EXPONENT, attrs);
+    std::unique_ptr<BIGNUM, void(*)(BIGNUM*)> priv_p1 = parse_bignum(CKA_PRIME_1, attrs);
+    std::unique_ptr<BIGNUM, void(*)(BIGNUM*)> priv_p2 = parse_bignum(CKA_PRIME_2, attrs);
+    std::unique_ptr<BIGNUM, void(*)(BIGNUM*)> priv_e1 = parse_bignum(CKA_EXPONENT_1, attrs);
+    std::unique_ptr<BIGNUM, void(*)(BIGNUM*)> priv_e2 = parse_bignum(CKA_EXPONENT_2, attrs);
+    std::unique_ptr<BIGNUM, void(*)(BIGNUM*)> priv_c = parse_bignum(CKA_COEFFICIENT, attrs);
+    
+    pubkey->e = expon.release();
+    pubkey->n = modul.release();
+    
+    pubkey->d = priv_expon.release();
+    pubkey->p = priv_p1.release();
+    pubkey->q = priv_p2.release();
+    pubkey->dmp1 = priv_e1.release();
+    pubkey->dmq1 = priv_e2.release();
+    pubkey->iqmp = priv_c.release();
+    
+    std::shared_ptr<EVP_PKEY> pRsaKey(
+        EVP_PKEY_new(),
+        EVP_PKEY_free
+    );
+    
+    if (1 != EVP_PKEY_assign_RSA(pRsaKey.get(), pubkey.release())) {
+        throw std::runtime_error("Can't assign rsa key");
+    }
+    
+    char *dst_buf;
+    size_t size;
+    
+    try {
+        auto file = write_mem(&dst_buf, &size);
+        
+        if (klass == CKO_PUBLIC_KEY) {
+            if (PEM_write_PUBKEY(file.get(), pRsaKey.get()) != 1) {
+                st_logf("PEM_write_PUBKEY error\n");
+                throw std::runtime_error("Can't create rsa key from modulus");
+            }
+            st_logf("PEM_write_PUBKEY OK\n");
+        } else if (klass == CKO_PRIVATE_KEY) {
+            if (PEM_write_PrivateKey(file.get(), pRsaKey.get(), NULL, 0, 0, NULL, NULL) != 1) {
+                st_logf("PEM_write_PrivateKey error\n");
+                throw std::runtime_error("Can't create rsa key from modulus");
+            }
+            st_logf("PEM_write_PrivateKey OK\n");
+        }
+    } catch(...) {
+    }
+
+    std::vector<unsigned char> ret(dst_buf, dst_buf + size);
+    free(dst_buf);
+    return ret;
+}
+
+
 void soft_token_t::check_storage()
 {
     if (p_->storage && p_->storage->present()) {
@@ -626,9 +707,7 @@ void soft_token_t::reset()
     const CK_OBJECT_CLASS public_key_c = CKO_PUBLIC_KEY;
     const CK_OBJECT_CLASS private_key_c = CKO_PRIVATE_KEY;
     
-     st_logf("r1\n");
     for(auto& private_key: p_->objects | filtered(by_attrs({create_object(CKA_CLASS, private_key_c)}))) {
-        st_logf("r2\n");
         auto public_range = p_->objects
             | filtered(by_attrs({create_object(CKA_CLASS, public_key_c)}))
 //                 | filtered(by_attrs({create_object(AttrSshPublic, bool_true)}))
@@ -637,15 +716,12 @@ void soft_token_t::reset()
                     || pub_key.second.at(CKA_LABEL).to_string() == (private_key.second.at(CKA_LABEL).to_string() + ".pub");
             });
         
-        st_logf("r3\n");
         for (auto& public_key : public_range) {
             public_key.second[CKA_ID] = private_key.second[CKA_ID];
             public_key.second[CKA_OBJECT_ID] = private_key.second[CKA_OBJECT_ID];
         }
-        st_logf("r4\n");
     }
     
-    st_logf("r5\n");
     for(auto it = p_->objects.begin(); it != p_->objects.end(); ++it ) {
 //             st_logf("  *** Final obejct: %s %s - %s\n", it->second.at(CKA_LABEL)->pValue, std::to_string(it->first).c_str(), it->second.at(CKA_ID).to_string().c_str());
     }
@@ -668,7 +744,7 @@ Attributes data_object_attrs(descriptor_p desc, const Attributes& attributes)
         
         //Data Object Attributes
         //create_object(CKA_APPLICATION, desc->id),
-        create_object(CKA_OBJECT_ID, std::to_string(desc->id)),
+        create_object(CKA_OBJECT_ID, desc->id),
         //create_object(CKA_VALUE, desc->id), //read when needed
     };
 
@@ -695,7 +771,7 @@ Attributes public_key_attrs(descriptor_p desc, const Attributes& attributes)
         
         //Common Key Attributes
         //create_object(CKA_KEY_TYPE,  type),
-        create_object(CKA_ID,        std::to_string(desc->id)),
+        create_object(CKA_ID,        desc->id),
         //create_object(CKA_START_DATE,        id),
         //create_object(CKA_END_DATE,        id),
         create_object(CKA_DERIVE,    bool_false),
@@ -792,7 +868,7 @@ Attributes private_key_attrs(descriptor_p desc, const Attributes& attributes)
         
         //Common Key Attributes
         create_object(CKA_KEY_TYPE,  type),
-        create_object(CKA_ID,        std::to_string(desc->id)),
+        create_object(CKA_ID,        desc->id),
         //create_object(CKA_START_DATE,      id),
         //create_object(CKA_END_DATE,        id),
         create_object(CKA_DERIVE,    bool_false),
@@ -868,7 +944,7 @@ Attributes secret_key_attrs(descriptor_p desc, const Attributes& attributes)
         
         //Common Key Attributes
         //create_object(CKA_KEY_TYPE,        id),
-        create_object(CKA_ID,        std::to_string(desc->id)),
+        create_object(CKA_ID,        desc->id),
         //create_object(CKA_START_DATE,        id),
         //create_object(CKA_END_DATE,        id),
         create_object(CKA_DERIVE,    bool_false),

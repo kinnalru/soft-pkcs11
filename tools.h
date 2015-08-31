@@ -8,7 +8,7 @@
 
 void st_logf(const char *fmt, ...);
 
-void print_attributes(const CK_ATTRIBUTE *attributes, CK_ULONG num_attributes);
+void print_attributes(const CK_ATTRIBUTE *attributes, CK_ULONG num_attributes); 
 
 std::pair<int, std::shared_ptr<unsigned char>> read_bignum(void* ssl_bignum);
 

@@ -43,8 +43,16 @@ struct attribute_t {
         return reinterpret_cast<T>(attr_.pValue);
     }
     
+    inline CK_OBJECT_HANDLE to_handle() const {
+        return *(reinterpret_cast<CK_OBJECT_HANDLE*>(attr_.pValue));
+    }
+    
     inline const std::string to_string() const {
         return std::string(reinterpret_cast<char*>(attr_.pValue), attr_.ulValueLen);
+    }
+    
+    inline const std::vector<unsigned char> to_bytes() const {
+        return std::vector<unsigned char>(reinterpret_cast<unsigned char*>(attr_.pValue), reinterpret_cast<unsigned char*>(attr_.pValue) + attr_.ulValueLen);
     }
     
     inline bool to_bool() const {

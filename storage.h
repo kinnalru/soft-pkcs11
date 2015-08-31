@@ -41,6 +41,7 @@ struct storage_t {
         }
     }
 
+
 protected:
     storage_t(const std::string& n, const boost::property_tree::ptree& c, std::shared_ptr<storage_t> s = std::shared_ptr<storage_t>())
         : name_(n), prev(s), config_(c){};

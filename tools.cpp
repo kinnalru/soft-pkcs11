@@ -97,7 +97,10 @@ void print_attributes(const CK_ATTRIBUTE *attributes, CK_ULONG num_attributes)
             st_logf("  * type: <value> size: <%d>\n", attributes[i].ulValueLen);
             break;
         case CKA_ID:
-            st_logf("  * type: <id> size: <%d> value: <%s>\n", attributes[i].ulValueLen, attributes[i].pValue);
+            st_logf("  * type: <key id> size: <%d> value: <%lu>\n", attributes[i].ulValueLen, *((CK_OBJECT_HANDLE*)attributes[i].pValue));
+            break;
+        case CKA_OBJECT_ID:
+            st_logf("  * type: <id> size: <%d> value: <%lu>\n", attributes[i].ulValueLen, *((CK_OBJECT_HANDLE*)attributes[i].pValue));
             break;
         default:
             st_logf("  * type: <UNKNOWN> size: <%d> type: [0x%08lx]\n", attributes[i].ulValueLen, attributes[i].type);
