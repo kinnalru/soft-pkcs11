@@ -4,6 +4,7 @@
 
 #include <memory>
 #include <list>
+#include <map>
 
 #include <boost/property_tree/ptree.hpp>
 
@@ -17,6 +18,7 @@ struct item_t {
     
     const std::string filename;
     const std::vector<char> data;
+    std::map<int, std::string> meta;
 };
 
 struct storage_t {
@@ -54,6 +56,17 @@ protected:
     std::shared_ptr<storage_t> prev;
     boost::property_tree::ptree config_;
     std::string path_;
+};
+
+struct descriptor_t {
+  
+    descriptor_t(const item_t& it);
+    ~descriptor_t() {}
+    
+    const item_t item;
+    std::string first_line;
+    CK_OBJECT_HANDLE id;
+    std::shared_ptr<FILE> file;
 };
 
 

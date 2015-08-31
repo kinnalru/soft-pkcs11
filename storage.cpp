@@ -21,6 +21,9 @@ const std::string fuse_driver_c = "fuse";
 const std::string shell_driver_c = "shell";
 const std::string crypt_driver_c = "crypt";
 
+const std::string meta_c = ".soft-pkcs.meta";
+
+
 struct fs_storage_t : storage_t {
     fs_storage_t(const config_t& c, const std::string& pin, std::shared_ptr<storage_t> s)
         : storage_t(fs_driver_c, c, s)
@@ -55,15 +58,40 @@ struct fs_storage_t : storage_t {
     virtual std::list<item_t> items() {
         std::list<item_t> result;
         
+        boost::property_tree::ptree meta;
+        
         for(auto it = files_begin(); it != files_end(); ++it) {
             std::ifstream stream(it->path().string());
             
-            result.push_back(
-                item_t(
-                    it->path().filename().string(),
-                    std::vector<char>((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>())                         
-                )
-            );
+            if (it->path().filename() == meta_c) {
+                st_logf("meta: %s\n", it->path().filename().c_str());
+                boost::property_tree::ini_parser::read_ini(it->path().string(), meta);
+            }
+            else {
+              result.push_back(
+                  item_t(
+                      it->path().filename().string(),
+                      std::vector<char>((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>())                         
+                  )
+              );  
+            }
+        }
+        
+        BOOST_FOREACH(auto p, meta) {
+            if (p.second.size() > 0) {
+                auto it = std::find_if(result.begin(), result.end(), [&p] (const item_t& item){
+                    return item.filename == p.first;
+                });
+                
+                if (it != result.end()) {
+                    st_logf("meta for: %s\n", p.first.c_str());
+                    try {
+                      it->meta[CKA_ID] = p.second.get<std::string>("id").c_str();
+                    }
+                    catch(...){
+                    }
+                }
+            }
         }
         
         return result;
@@ -344,3 +372,45 @@ std::shared_ptr<storage_t> storage_t::create(const config_t& config, const std::
     
     return storage;
 }
+
+
+struct to_object_id : std::unary_function<const fs::directory_entry&, CK_OBJECT_HANDLE> {
+    CK_OBJECT_HANDLE operator() (const fs::directory_entry& d) const {
+        return static_cast<CK_OBJECT_HANDLE>(hash(d.path().filename().c_str()));
+    }
+    CK_OBJECT_HANDLE operator() (const std::string& filename) const {
+        return static_cast<CK_OBJECT_HANDLE>(hash(filename));
+    }
+private:
+    std::hash<std::string> hash;
+};
+
+descriptor_t::descriptor_t(const item_t& it)
+    : item(it)
+{
+    if (item.data.empty()) {
+        throw std::runtime_error("There is no data in item");
+    }
+    
+    const std::string str(item.data.begin(), item.data.end());
+    std::stringstream stream(str);
+    
+    std::getline(stream, first_line, '\n');
+    stream.seekg (0, stream.beg);
+    
+    id = to_object_id()(item.filename);
+    
+    st_logf("File: %s hash %lu\n", item.filename.c_str(), id);
+    
+    void* src = const_cast<char*>(item.data.data());
+    file.reset(
+        ::fmemopen(src, item.data.size(), "r"),
+        ::fclose
+    );
+    
+    if (!file.get()) {
+        throw std::runtime_error("Can't memopen data");
+    }
+};
+
+

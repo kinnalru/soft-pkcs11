@@ -1,12 +1,7 @@
 #ifndef ST_SOFT_TOKEN_H
 #define ST_SOFT_TOKEN_H
 
-#include <string>
-#include <memory>
-#include <vector>
-#include <map>
-
-#include "attribute.h"
+#include "types.h"
 
 
 typedef std::vector<CK_OBJECT_HANDLE> Handles;

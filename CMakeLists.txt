@@ -24,6 +24,8 @@ include_directories(${Boost_INCLUDE_DIRS})
 #add_subdirectory(3rdparty//qtwebdav)
 
 set(HEADERS
+    types.h
+    object.h
     soft_token.h
     storage.h
     tools.h
@@ -35,6 +37,7 @@ set(SOURCES
     tools.cpp
     storage.cpp
     soft_token.cpp
+    object.cpp
     attribute.cpp
 )
 

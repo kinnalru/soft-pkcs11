@@ -44,7 +44,12 @@ struct attribute_t {
     }
     
     inline CK_OBJECT_HANDLE to_handle() const {
-        return *(reinterpret_cast<CK_OBJECT_HANDLE*>(attr_.pValue));
+        if (attr_.pValue) {
+          return *(reinterpret_cast<CK_OBJECT_HANDLE*>(attr_.pValue));
+        }
+        else {
+          return 0;
+        }
     }
     
     inline const std::string to_string() const {

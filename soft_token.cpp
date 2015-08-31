@@ -26,6 +26,7 @@
 #include "storage.h"
 #include "soft_token.h"
 #include "exceptions.h"
+#include "object.h"
 
 enum Attribute : CK_ATTRIBUTE_TYPE {
     AttrFilename = CKA_VENDOR_DEFINED + 1,
@@ -38,66 +39,6 @@ const CK_BBOOL bool_false = CK_FALSE;
 
 namespace fs = boost::filesystem;
 using namespace boost::adaptors;
-
-struct descriptor_t;
-typedef std::shared_ptr<descriptor_t> descriptor_p;
-
-Attributes data_object_attrs(descriptor_p desc, const Attributes& attributes = Attributes());
-Attributes public_key_attrs(descriptor_p desc,  const Attributes& attributes = Attributes());    
-Attributes rsa_public_key_attrs(descriptor_p desc,  const Attributes& attributes = Attributes());
-Attributes ssh_public_key_attrs(descriptor_p desc,  const Attributes& attributes = Attributes());    
-Attributes private_key_attrs(descriptor_p desc, const Attributes& attributes = Attributes());
-Attributes rsa_private_key_attrs(descriptor_p desc, const Attributes& attributes = Attributes());
-Attributes secret_key_attrs(descriptor_p desc,  const Attributes& attributes = Attributes());
-
-struct to_object_id : std::unary_function<const fs::directory_entry&, CK_OBJECT_HANDLE> {
-    CK_OBJECT_HANDLE operator() (const fs::directory_entry& d) const {
-        return static_cast<CK_OBJECT_HANDLE>(hash(d.path().filename().c_str()));
-    }
-    CK_OBJECT_HANDLE operator() (const std::string& filename) const {
-        return static_cast<CK_OBJECT_HANDLE>(hash(filename));
-    }
-private:
-    std::hash<std::string> hash;
-};
-
-struct descriptor_t {
-  
-    descriptor_t(const item_t& it)
-        : item(it)
-    {
-        if (item.data.empty()) {
-            throw std::runtime_error("There is no data in item");
-        }
-        
-        const std::string str(item.data.begin(), item.data.end());
-        std::stringstream stream(str);
-        
-        std::getline(stream, first_line, '\n');
-        stream.seekg (0, stream.beg);
-        
-        id = to_object_id()(item.filename);
-        
-        st_logf("File: %s hash %lu\n", item.filename.c_str(), id);
-        
-        void* src = const_cast<char*>(item.data.data());
-        file.reset(
-            ::fmemopen(src, item.data.size(), "r"),
-            ::fclose
-        );
-        
-        if (!file.get()) {
-            throw std::runtime_error("Can't memopen data");
-        }
-    }
-    
-    ~descriptor_t() {}
-    
-    const item_t item;
-    std::string first_line;
-    CK_OBJECT_HANDLE id;
-    std::shared_ptr<FILE> file;
-};
 
 struct is_public_key : std::unary_function<descriptor_p, bool> {
     bool operator() (descriptor_p desc) {
@@ -146,40 +87,45 @@ struct to_attributes : std::unary_function<const fs::directory_entry&, Objects::
         Attributes attrs = {
             create_object(AttrFilename, desc->item.filename),
         };
-        
-        attrs = data_object_attrs(desc, attrs);
-        
-        if (is_public_key()(desc)) {
-            attrs = public_key_attrs(desc, attrs);
-        }
-        if (is_rsa_public_key()(desc)) {
-            attrs = rsa_public_key_attrs(desc, attrs);
-        }
-        if (is_ssh_public_key()(desc)) {
-            
-            attrs = ssh_public_key_attrs(desc, attrs);
 
-            {
-                //create additional unpacked key
-                attrs[AttrSshUnpacked] = attribute_t(AttrSshUnpacked, bool_true);
-                attrs[CKA_OBJECT_ID] = attribute_t(CKA_OBJECT_ID,  desc->id - 1);
-                attrs[CKA_ID] = attribute_t(CKA_ID,  desc->id - 1);
-                objects.insert(std::make_pair(desc->id - 1, attrs)).first->first;
-            };
-            
-            attrs.erase(AttrSshUnpacked);
-            attrs.erase(CKA_VALUE);
-            attrs[CKA_OBJECT_ID] = attribute_t(CKA_OBJECT_ID,  desc->id);
-            attrs[CKA_ID] = attribute_t(CKA_ID,  desc->id);
-            attrs[CKA_LABEL] = attribute_t(CKA_LABEL, "SSH " + attrs[CKA_LABEL].to_string());
-            attrs[AttrSshPublic] = attribute_t(AttrSshPublic, bool_true);
+//         attrs = data_object_attrs(desc, attrs);
+
+        if (is_rsa_public_key()(desc)) {
+            rsa_public_key_t o = rsa_public_key_t();
+            attrs = o(desc, attrs);
         }
-        
-        if (is_private_key()(desc)) {
-            attrs = private_key_attrs(desc, attrs);
+        else if (is_ssh_public_key()(desc)) {
+            ssh_public_key_t o = ssh_public_key_t();
+            attrs = o(desc, attrs);
+
+//             attrs = ssh_public_key_attrs(desc, attrs);
+// 
+//             {
+//                 //create additional unpacked key
+//                 attrs[AttrSshUnpacked] = attribute_t(AttrSshUnpacked, bool_true);
+//                 attrs[CKA_OBJECT_ID] = attribute_t(CKA_OBJECT_ID,  desc->id - 1);
+//                 attrs[CKA_ID] = attribute_t(CKA_ID,  desc->id - 1);
+//                 objects.insert(std::make_pair(desc->id - 1, attrs)).first->first;
+//             };
+//             
+//             attrs.erase(AttrSshUnpacked);
+//             attrs.erase(CKA_VALUE);
+//             attrs[CKA_OBJECT_ID] = attribute_t(CKA_OBJECT_ID,  desc->id);
+//             attrs[CKA_ID] = attribute_t(CKA_ID,  desc->id);
+//             attrs[CKA_LABEL] = attribute_t(CKA_LABEL, "SSH " + attrs[CKA_LABEL].to_string());
+//             attrs[AttrSshPublic] = attribute_t(AttrSshPublic, bool_true);
         }
-        if (is_rsa_private_key()(desc)) {
-            attrs = rsa_private_key_attrs(desc, attrs);
+        else if (is_rsa_private_key()(desc)) {
+            rsa_private_key_t o = rsa_private_key_t();
+            attrs = o(desc, attrs);
+        }
+        else if (is_rsa_private_key()(desc)) {
+            rsa_private_key_t o = rsa_private_key_t();
+            attrs = o(desc, attrs);
+        }
+        else {
+            data_object_t o = data_object_t();
+            attrs = o(desc, attrs);
         }
         
         st_logf("      - ID[%lu] - ID[%lu]\n", desc->id, attrs[CKA_OBJECT_ID].to_handle());      
@@ -706,6 +652,9 @@ void soft_token_t::reset()
     
     const CK_OBJECT_CLASS public_key_c = CKO_PUBLIC_KEY;
     const CK_OBJECT_CLASS private_key_c = CKO_PRIVATE_KEY;
+
+
+    st_logf("1\n");
     
     for(auto& private_key: p_->objects | filtered(by_attrs({create_object(CKA_CLASS, private_key_c)}))) {
         auto public_range = p_->objects
@@ -722,262 +671,13 @@ void soft_token_t::reset()
         }
     }
     
+    st_logf("2\n");
+    
     for(auto it = p_->objects.begin(); it != p_->objects.end(); ++it ) {
 //             st_logf("  *** Final obejct: %s %s - %s\n", it->second.at(CKA_LABEL)->pValue, std::to_string(it->first).c_str(), it->second.at(CKA_ID).to_string().c_str());
     }
 }
 
-Attributes data_object_attrs(descriptor_p desc, const Attributes& attributes)
-{
-    const CK_OBJECT_CLASS klass = CKO_DATA;
-    const CK_FLAGS flags = 0;
-    
-    
-    Attributes attrs = {
-        create_object(CKA_CLASS,     klass),
-
-        //Common Storage Object Attributes
-        create_object(CKA_TOKEN,     bool_true),
-        create_object(CKA_PRIVATE,   bool_true),
-        create_object(CKA_MODIFIABLE,bool_false),
-        create_object(CKA_LABEL,     desc->item.filename),
-        
-        //Data Object Attributes
-        //create_object(CKA_APPLICATION, desc->id),
-        create_object(CKA_OBJECT_ID, desc->id),
-        //create_object(CKA_VALUE, desc->id), //read when needed
-    };
-
-    //keys in attrs takes precedence with attributes
-    attrs.insert(attributes.begin(), attributes.end());
-    
-    return attrs;
-}
-
-Attributes public_key_attrs(descriptor_p desc, const Attributes& attributes)
-{
-    const CK_OBJECT_CLASS klass = CKO_PUBLIC_KEY;
-    const CK_MECHANISM_TYPE mech_type = CKM_RSA_X_509;
-    
-    //ftp://ftp.rsasecurity.com/pub/pkcs/pkcs-11/v2-20/pkcs-11v2-20.pdf
-    Attributes attrs = {
-        create_object(CKA_CLASS,     klass),
-        
-        //Common Storage Object Attributes
-        create_object(CKA_TOKEN,     bool_true),
-        create_object(CKA_PRIVATE,   bool_false),
-        create_object(CKA_MODIFIABLE,bool_false),
-        create_object(CKA_LABEL,     desc->item.filename),
-        
-        //Common Key Attributes
-        //create_object(CKA_KEY_TYPE,  type),
-        create_object(CKA_ID,        desc->id),
-        //create_object(CKA_START_DATE,        id),
-        //create_object(CKA_END_DATE,        id),
-        create_object(CKA_DERIVE,    bool_false),
-        create_object(CKA_LOCAL,     bool_false),
-        create_object(CKA_KEY_GEN_MECHANISM, mech_type),
-        
-        //Common Public Key Attributes
-        //create_object(CKA_SUBJECT,   bool_true),
-        create_object(CKA_ENCRYPT,   bool_true),
-        create_object(CKA_VERIFY,    bool_true),
-        //create_object(CKA_VERIFY_RECOVER,   bool_false),
-        //create_object(CKA_TRUSTED10,   bool_true),
-        //create_object(CKA_WRAP_TEMPLATE ,   bool_true),
-        
-        /////////////
-
-    };
-    
-   
-    //keys in attrs takes precedence with attributes
-    attrs.insert(attributes.begin(), attributes.end());
-
-    return attrs;    
-}
-
-Attributes rsa_public_key_attrs(descriptor_p desc, const Attributes& attributes)
-{
-    const CK_KEY_TYPE type = CKK_RSA;
-    
-    Attributes attrs = {
-        create_object(CKA_KEY_TYPE,  type),
-    };
-    
-    if (EVP_PKEY *pkey = PEM_read_PUBKEY(desc->file.get(), NULL, NULL, NULL)) {
-        int size = 0;
-        std::shared_ptr<unsigned char> buf;
-        
-        std::tie(size, buf) = read_bignum(pkey->pkey.rsa->n);
-        attrs.insert(std::make_pair(CKA_MODULUS, attribute_t(CKA_MODULUS, buf.get(), size)));
-        attrs.insert(create_object(CKA_MODULUS_BITS,   size * 8));            
-        
-        std::tie(size, buf) = read_bignum(pkey->pkey.rsa->e);
-        attrs.insert(std::make_pair(CKA_PUBLIC_EXPONENT, attribute_t(CKA_PUBLIC_EXPONENT, buf.get(), size)));
-
-        EVP_PKEY_free(pkey);
-    }
-    
-    //keys in attrs takes precedence with attributes
-    attrs.insert(attributes.begin(), attributes.end());
-
-    return attrs;  
-}
-
-
-
-Attributes ssh_public_key_attrs(descriptor_p desc, const Attributes& attributes)
-{
-    Attributes attrs;
-    const auto data = piped("cat > /tmp/.soft-pkcs.tmp && ssh-keygen -e -m PKCS8 -f /tmp/.soft-pkcs.tmp && rm /tmp/.soft-pkcs.tmp", desc->item.data);
-    
-    assert(data.size());
-    
-    if (!data.empty()) {
-        std::shared_ptr<FILE> reserve = desc->file;        
-        desc->file =read_mem(data);
-        attrs = rsa_public_key_attrs(desc, attributes);
-        desc->file = reserve;
-
-        attrs.insert(create_object(CKA_VALUE, data));        
-    }
-    
-    //keys in attrs takes precedence with attributes
-    attrs.insert(attributes.begin(), attributes.end());
-    
-    return attrs;  
-}
-
-Attributes private_key_attrs(descriptor_p desc, const Attributes& attributes)
-{
-    const CK_OBJECT_CLASS klass = CKO_PRIVATE_KEY;
-    const CK_MECHANISM_TYPE mech_type = CKM_RSA_X_509;
-    const CK_KEY_TYPE type = CKK_GENERIC_SECRET;
-    
-    Attributes attrs = {
-        create_object(CKA_CLASS,     klass),
-        
-//         std::make_pair(CKA_VALUE, attribute_t(CKA_VALUE, data.size())), // SPECIAL CASE FOR VALUE
-        
-        //Common Storage Object Attributes
-        create_object(CKA_TOKEN,     bool_true),
-        create_object(CKA_PRIVATE,   bool_true),
-        create_object(CKA_MODIFIABLE,bool_false),
-        create_object(CKA_LABEL,     desc->item.filename),
-        
-        //Common Key Attributes
-        create_object(CKA_KEY_TYPE,  type),
-        create_object(CKA_ID,        desc->id),
-        //create_object(CKA_START_DATE,      id),
-        //create_object(CKA_END_DATE,        id),
-        create_object(CKA_DERIVE,    bool_false),
-        create_object(CKA_LOCAL,     bool_false),
-        create_object(CKA_KEY_GEN_MECHANISM, mech_type),
-        
-        //Common Private Key Attributes
-        //create_object(CKA_SUBJECT,   bool_true),
-        create_object(CKA_SENSITIVE, bool_true),
-        create_object(CKA_DECRYPT,   bool_true),
-        create_object(CKA_SIGN,      bool_true),
-        create_object(CKA_SIGN_RECOVER, bool_false),
-        create_object(CKA_UNWRAP,    bool_true),
-        create_object(CKA_EXTRACTABLE, bool_true),
-        //create_object(CKA_ALWAYS_SENSITIVE, bool_true),
-        create_object(CKA_NEVER_EXTRACTABLE, bool_false),
-        //create_object(CKA_WRAP_WITH_TRUSTED1, bool_false),
-        //create_object(CKA_UNWRAP_TEMPLATE, bool_false),
-        create_object(CKA_ALWAYS_AUTHENTICATE, bool_true),
-        
-        /////////////
-
-    };
-    
-    //keys in attrs takes precedence with attributes 
-    attrs.insert(attributes.begin(), attributes.end());
-
-    return attrs;  
-}
-
-Attributes rsa_private_key_attrs(descriptor_p desc, const Attributes& attributes) {
-    const CK_KEY_TYPE type = CKK_RSA;
-    
-    Attributes attrs = {
-        create_object(CKA_KEY_TYPE,  type),
-    };
-    
-    if (EVP_PKEY *pkey = PEM_read_PrivateKey(desc->file.get(), NULL, NULL, const_cast<char*>(""))) {
-        int size = 0;
-        std::shared_ptr<unsigned char> buf;
-        
-        std::tie(size, buf) = read_bignum(pkey->pkey.rsa->n);
-        attrs.insert(std::make_pair(CKA_MODULUS, attribute_t(CKA_MODULUS, buf.get(), size)));
-        
-        std::tie(size, buf) = read_bignum(pkey->pkey.rsa->e);
-        attrs.insert(std::make_pair(CKA_PUBLIC_EXPONENT, attribute_t(CKA_PUBLIC_EXPONENT, buf.get(), size)));
-
-        EVP_PKEY_free(pkey);
-    }
-    
-    //keys in attrs takes precedence with attributes
-    attrs.insert(attributes.begin(), attributes.end());
-
-    return attrs; 
-}
-
-Attributes secret_key_attrs(descriptor_p desc, const Attributes& attributes)
-{
-    const CK_OBJECT_CLASS klass = CKO_SECRET_KEY;
-    const CK_MECHANISM_TYPE mech_type = CKM_RSA_X_509;
-    
-    //ftp://ftp.rsasecurity.com/pub/pkcs/pkcs-11/v2-20/pkcs-11v2-20.pdf
-    Attributes attrs = {
-        create_object(CKA_CLASS,     klass),
-        
-//         std::make_pair(CKA_VALUE, attribute_t(CKA_VALUE, data.size())), // SPECIAL CASE FOR VALUE
-        
-        //Common Storage Object Attributes
-        create_object(CKA_TOKEN,     bool_true),
-        create_object(CKA_PRIVATE,   bool_true),
-        create_object(CKA_MODIFIABLE,bool_false),
-        create_object(CKA_LABEL,     desc->item.filename),
-        
-        //Common Key Attributes
-        //create_object(CKA_KEY_TYPE,        id),
-        create_object(CKA_ID,        desc->id),
-        //create_object(CKA_START_DATE,        id),
-        //create_object(CKA_END_DATE,        id),
-        create_object(CKA_DERIVE,    bool_false),
-        create_object(CKA_LOCAL,     bool_false),
-        create_object(CKA_KEY_GEN_MECHANISM, mech_type),
-        
-        //Common Secret Key Attributes
-        create_object(CKA_SENSITIVE,      bool_true), //bool_false
-        create_object(CKA_ENCRYPT,   bool_true),
-        create_object(CKA_DECRYPT,   bool_true),
-        create_object(CKA_SIGN,      bool_true),
-        create_object(CKA_VERIFY,    bool_false),
-        create_object(CKA_WRAP,      bool_false),
-        create_object(CKA_UNWRAP,    bool_false),
-        create_object(CKA_EXTRACTABLE, bool_true),
-        //create_object(CKA_ALWAYS_SENSITIVE, bool_true),
-        create_object(CKA_NEVER_EXTRACTABLE, bool_false),
-        //create_object(CKA_CHECK_VALUE, bool_false),
-        //create_object(CKA_WRAP_WITH_TRUSTED, bool_false),
-        //create_object(CKA_TRUSTED, bool_false),
-        //create_object(CKA_WRAP_TEMPLATE, bool_false),
-        //create_object(CKA_UNWRAP_TEMPLATE, bool_false),
-        create_object(CKA_ALWAYS_AUTHENTICATE, bool_true),
-        
-        /////////////
-
-    };
-
-    //keys in attrs takes precedence with attributes
-    attrs.insert(attributes.begin(), attributes.end());
-
-    return attrs;
-}
 
 
 
