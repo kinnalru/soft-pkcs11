@@ -30,12 +30,12 @@ std::string metaname(const std::string& file) {
     return "." + file + ".meta";
 };
 
-const std::map<std::string, CK_ATTRIBUTE_TYPE> s2a = {
-  {"id", CKA_ID}
+const std::map<std::string, std::function<attribute_t(const std::string& val)> > load_attribute = {
+  {"id", [](const std::string& val){return attribute_t(CKA_ID, boost::lexical_cast<CK_ULONG>(val));}}
 };
 
-const std::map<CK_ATTRIBUTE_TYPE, std::string> a2s = {
-  {CKA_ID, "id"}
+const std::map<CK_ATTRIBUTE_TYPE, std::function<boost::property_tree::ptree::value_type(const attribute_t& attr)> > dump_attribute = {
+  {CKA_ID, [](const attribute_t& attr){return std::make_pair("id", boost::property_tree::ptree(boost::lexical_cast<std::string>(attr.to_id())));}}
 };
 
 Attributes parse_meta(const Bytes& bytes) {
@@ -46,9 +46,10 @@ Attributes parse_meta(const Bytes& bytes) {
     boost::property_tree::ini_parser::read_ini(stream, ini);
     
     BOOST_FOREACH(auto attr, ini) {
-        auto it = s2a.find(attr.first);
-        if (it != s2a.end()) {
-            attributes[it->second] = attribute_t(it->second, boost::lexical_cast<CK_ULONG>(attr.second.data()));
+        auto it = load_attribute.find(attr.first);
+        if (it != load_attribute.end()) {
+            auto a = it->second(attr.second.data());
+            attributes[a->type] = a;
         }
     }
     
@@ -59,9 +60,9 @@ Bytes write_meta(const Attributes& attributes) {
     boost::property_tree::ptree ini;
     
     BOOST_FOREACH(auto& attr, attributes) {
-        auto it = a2s.find(attr.first);
-        if (it != a2s.end()) {
-            ini.put(it->second, boost::lexical_cast<std::string>(attr.second.to_id()));
+        auto it = dump_attribute.find(attr.first);
+        if (it != dump_attribute.end()) {
+            ini.push_back(it->second(attr.second));
         }
     }
     
