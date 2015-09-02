@@ -712,6 +712,11 @@ CK_RV C_CreateObject(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, CK_
     std::vector<unsigned char> value;
     
     std::string suf;
+    
+    Attributes attrs;
+    for (CK_ULONG i = 0; i < ulCount; i++) {
+        attrs[pTemplate[i].type] = pTemplate[i];
+    }  
    
     for (int i = 0; i < ulCount; i++) {
         if(pTemplate[i].type == CKA_VALUE) {
@@ -723,10 +728,7 @@ CK_RV C_CreateObject(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, CK_
         if(pTemplate[i].type == CKA_CLASS) {
             CK_OBJECT_CLASS klass = *((CK_OBJECT_CLASS*)pTemplate[i].pValue);
             
-            Attributes attrs;
-            for (CK_ULONG i = 0; i < ulCount; i++) {
-                attrs[pTemplate[i].type] = pTemplate[i];
-            }            
+          
             if (klass == CKO_PUBLIC_KEY) {
                 value = soft_token->create_key(klass, attrs);
                 suf = ".pub";
@@ -747,7 +749,7 @@ CK_RV C_CreateObject(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, CK_
     st_logf("WRITE: %s  -  %s\n", label.c_str(), value.data());
     
     try {
-      id = soft_token->write(label, value);    
+      id = soft_token->write(label, value, attrs);
     }
     catch(const pkcs11_exception_t& e) {
         st_logf("write error: %s\n", e.what());

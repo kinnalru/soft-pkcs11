@@ -214,6 +214,7 @@ Attributes rsa_private_key_t::operator()(descriptor_p desc, const Attributes& at
         create_object(CKA_KEY_TYPE,  type),
     };
     
+    st_logf("  ..... before\n");
     if (EVP_PKEY *pkey = PEM_read_PrivateKey(desc->file.get(), NULL, NULL, const_cast<char*>(""))) {
         int size = 0;
         std::shared_ptr<unsigned char> buf;
@@ -221,11 +222,14 @@ Attributes rsa_private_key_t::operator()(descriptor_p desc, const Attributes& at
         std::tie(size, buf) = read_bignum(pkey->pkey.rsa->n);
         attrs.insert(std::make_pair(CKA_MODULUS, attribute_t(CKA_MODULUS, buf.get(), size)));
         
+         st_logf("  ..... CKA_MODULUS: %lu\n", attrs[CKA_MODULUS].to_handle());
+        
         std::tie(size, buf) = read_bignum(pkey->pkey.rsa->e);
         attrs.insert(std::make_pair(CKA_PUBLIC_EXPONENT, attribute_t(CKA_PUBLIC_EXPONENT, buf.get(), size)));
 
         EVP_PKEY_free(pkey);
     }
+    st_logf("  ..... after\n");
     
     //keys in attrs takes precedence with attributes
     attrs.insert(base_attrs.begin(), base_attrs.end());

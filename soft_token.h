@@ -36,7 +36,7 @@ public:
     bool check(CK_OBJECT_HANDLE id, const Attributes& attrs) const;
      
     std::string read(CK_OBJECT_HANDLE id);
-    CK_OBJECT_HANDLE write(const std::string& filename, const std::vector<unsigned char>& data);
+    CK_OBJECT_HANDLE write(const std::string& filename, const std::vector<unsigned char>& data, const Attributes& attrs = Attributes());
     
     
     std::vector<unsigned char> sign(CK_OBJECT_HANDLE id, CK_MECHANISM_TYPE type, CK_BYTE_PTR pData, CK_ULONG ulDataLen);

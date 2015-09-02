@@ -12,9 +12,10 @@
 #include "tools.h"
 
 struct item_t {
-    item_t(const std::string& fn, const std::vector<char>& d)
+    item_t(const std::string& fn, const std::vector<char>& d, const MetaAttributes& m = MetaAttributes())
         : filename(fn)
         , data(d)
+        , meta(m)
     {}
     
     const std::string filename;

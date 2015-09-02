@@ -16,7 +16,9 @@
 #include <boost/iterator/filter_iterator.hpp>
 #include <boost/iterator/transform_iterator.hpp>
 #include <boost/range/adaptors.hpp>
+#include <boost/foreach.hpp>
 #include <boost/range/algorithm.hpp>
+#include <boost/lexical_cast.hpp>
 
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/ini_parser.hpp>
@@ -116,6 +118,7 @@ struct to_attributes : std::unary_function<const fs::directory_entry&, Objects::
 //             attrs[AttrSshPublic] = attribute_t(AttrSshPublic, bool_true);
         }
         else if (is_rsa_private_key()(desc)) {
+            st_logf("      - LOADING PRIVATE [%s]\n", desc->item.filename.c_str());      
             rsa_private_key_t o = rsa_private_key_t();
             attrs = o(desc, attrs);
         }
@@ -445,7 +448,7 @@ std::string soft_token_t::read(CK_OBJECT_HANDLE id)
     return std::string();
 }
 
-CK_OBJECT_HANDLE soft_token_t::write(const std::string& filename, const std::vector<unsigned char>& data)
+CK_OBJECT_HANDLE soft_token_t::write(const std::string& filename, const std::vector<unsigned char>& data, const Attributes& attrs)
 {
     auto it = std::find_if(p_->objects.begin(), p_->objects.end(),
         by_attrs({create_object(AttrFilename, filename)}));
@@ -454,9 +457,17 @@ CK_OBJECT_HANDLE soft_token_t::write(const std::string& filename, const std::vec
         return soft_token_t::handle_invalid();
     }
     
+    MetaAttributes metalist;
+    auto id = attrs.find(CKA_ID);
+    if ( id != attrs.end()) {
+      metalist[CKA_ID] = boost::lexical_cast<std::string>(id->second.to_handle());
+    }
+    
+    
     const item_t item({
         filename,
-        std::vector<char>(data.begin(), data.end())
+        std::vector<char>(data.begin(), data.end()),
+        metalist
     });
     
     check_storage();
@@ -640,21 +651,21 @@ void soft_token_t::reset()
 {
     p_->objects.clear();
     
-    st_logf("cheking...\n");
+    st_logf(" *  RESET cheking...\n");
     check_storage();
     
-    st_logf("cheking... OK\n");
+    st_logf("    cheking...\n");
     to_attributes convert(p_->objects);
     for(auto item: p_->storage->items()) {
         const auto a = p_->objects.insert(convert(item)).first;
-        st_logf("Finded obejcts: %s %lu\n", item.filename.c_str(), a->first);
+        st_logf("    Finded obejcts: %s %lu\n", item.filename.c_str(), a->first);
     }
     
     const CK_OBJECT_CLASS public_key_c = CKO_PUBLIC_KEY;
     const CK_OBJECT_CLASS private_key_c = CKO_PRIVATE_KEY;
 
 
-    st_logf("1\n");
+    st_logf("    1\n");
     
     for(auto& private_key: p_->objects | filtered(by_attrs({create_object(CKA_CLASS, private_key_c)}))) {
         auto public_range = p_->objects
