@@ -457,22 +457,31 @@ CK_OBJECT_HANDLE soft_token_t::write(const std::string& filename, const std::vec
         return soft_token_t::handle_invalid();
     }
     
-    MetaAttributes metalist;
-    auto id = attrs.find(CKA_ID);
-    if ( id != attrs.end()) {
-      metalist[CKA_ID] = boost::lexical_cast<std::string>(id->second.to_handle());
-    }
+//     MetaAttributes metalist;
+//     auto id = attrs.find(CKA_ID);
+//     if ( id != attrs.end()) {
+//       metalist[CKA_ID] = boost::lexical_cast<std::string>(id->second.to_handle());
+//     }
     
+    
+    
+    Attributes aa(attrs);
+    aa[CKA_ID] = attribute_t(CKA_ID, 2);
+    
+    st_logf(" w 1\n");
     
     const item_t item({
         filename,
-        std::vector<char>(data.begin(), data.end()),
-        metalist
+        Bytes(data.begin(), data.end()),
+        aa
     });
     
-    check_storage();
-    const item_t item2 = p_->storage->write(item);
+    st_logf(" w 2\n");
     
+    check_storage();
+    st_logf(" w 3\n");
+    const item_t item2 = p_->storage->write(item);
+    st_logf(" w 4\n");
     const auto a = p_->objects.insert(to_attributes(p_->objects)(item2)).first;
     return a->first;
 }

@@ -8,8 +8,8 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/property_tree/ini_parser.hpp>
 
-#include <boost/interprocess/streams/bufferstream.hpp>
-using namespace boost::interprocess;
+#include <boost/interprocess/streams/vectorstream.hpp>
+
 
 #include "storage.h"
 #include "tools.h"
@@ -26,6 +26,10 @@ const std::string crypt_driver_c = "crypt";
 
 const std::string meta_c = ".soft-pkcs.meta";
 
+std::string metaname(const std::string& file) {
+    return "." + file + ".meta";
+};
+
 const std::map<std::string, CK_ATTRIBUTE_TYPE> s2a = {
   {"id", CKA_ID}
 };
@@ -34,83 +38,75 @@ const std::map<CK_ATTRIBUTE_TYPE, std::string> a2s = {
   {CKA_ID, "id"}
 };
 
-MetaAttributesList parse_meta(const std::vector<char>& v) {
-    MetaAttributesList result;
-    boost::property_tree::ptree metadata;
-    const std::string data(v.begin(), v.end());
-    std::stringstream ss(data);
-    boost::property_tree::ini_parser::read_ini(ss, metadata);
+Attributes parse_meta(const Bytes& bytes) {
+    Attributes attributes;
+    boost::property_tree::ptree ini;
     
-    BOOST_FOREACH(auto p, metadata) {
-        MetaAttributes& attrs = result[p.first];
-        BOOST_FOREACH(auto a, p.second) {
-            auto it = s2a.find(a.first);
-            if (it != s2a.end()) {
-                attrs[it->second] = a.second.data();
-            }
+    boost::interprocess::basic_vectorstream<Bytes> stream(bytes);
+    boost::property_tree::ini_parser::read_ini(stream, ini);
+    
+    BOOST_FOREACH(auto attr, ini) {
+        auto it = s2a.find(attr.first);
+        if (it != s2a.end()) {
+            attributes[it->second] = attribute_t(it->second, boost::lexical_cast<CK_ULONG>(attr.second.data()));
         }
     }
     
-    return result;
+    return attributes;
 }
 
-std::vector<char> write_meta(const MetaAttributesList& metalist) {
-    boost::property_tree::ptree metadata;
+Bytes write_meta(const Attributes& attributes) {
+    boost::property_tree::ptree ini;
     
-    BOOST_FOREACH(auto p, metalist) {
-        boost::property_tree::ptree attrs;
-        
-        BOOST_FOREACH(auto a, p.second) 
-        {
-          auto it = a2s.find(a.first);
-          if (it != a2s.end()) {
-              attrs.put(it->second, a.second);
-          }
+    BOOST_FOREACH(auto& attr, attributes) {
+        auto it = a2s.find(attr.first);
+        if (it != a2s.end()) {
+            ini.put(it->second, boost::lexical_cast<std::string>(attr.second.to_id()));
         }
-        
-        metadata.put_child(p.first, attrs);
     }
-    std::stringstream ss;
-    boost::property_tree::ini_parser::write_ini(ss, metadata);
-    return std::vector<char>(ss.str().begin(), ss.str().end());
+    
+    boost::interprocess::basic_vectorstream<Bytes> stream;
+    boost::property_tree::ini_parser::write_ini(stream, ini);    
+    
+    return stream.vector();
 }
-
+/*
 std::list<item_t> storage_t::items()
 {
     std::list<item_t> items = do_items();
     
-    try {
-      MetaAttributesList metalist = parse_meta(do_read(meta_c).data);
-      BOOST_FOREACH(item_t& item, items) {
-        item.meta = metalist[item.filename];
-      }
-    }
-    catch (...) {};
+//     try {
+//       MetaAttributesList metalist = parse_meta(do_read(meta_c).data);
+//       BOOST_FOREACH(item_t& item, items) {
+//         item.meta = metalist[item.filename];
+//       }
+//     }
+//     catch (...) {};
     return items;
 }
 
 item_t storage_t::read(const std::string& fn)
 {
     item_t item = do_read(fn);
-    try {
-      MetaAttributesList metalist = parse_meta(do_read(meta_c).data);
-      item.meta = metalist[item.filename];
-    }
-    catch(...){}
+//     try {
+//       MetaAttributesList metalist = parse_meta(do_read(meta_c).data);
+//       item.meta = metalist[item.filename];
+//     }
+//     catch(...){}
     return item;
 }
 
 item_t storage_t::write(const item_t& item)
 {
-    try {
-      MetaAttributesList metalist = parse_meta(do_read(meta_c).data);
-      metalist[item.filename] = item.meta;
-      auto data = write_meta(metalist);
-      do_write(item_t(meta_c, data));
-    }
-    catch(...) {}
+//     try {
+//       MetaAttributesList metalist = parse_meta(do_read(meta_c).data);
+//       metalist[item.filename] = item.meta;
+//       auto data = write_meta(metalist);
+//       do_write(item_t(meta_c, data));
+//     }
+//     catch(...) {}
     return do_write(item);
-}
+}*/
 
 
 
@@ -145,17 +141,19 @@ struct fs_storage_t : storage_t {
         return fs::exists(path) && fs::is_directory(path);
     }
     
-    virtual std::list<item_t> do_items() {
+    virtual std::list<item_t> items() {
         std::list<item_t> result;
         
         for(auto it = files_begin(); it != files_end(); ++it) {
             std::ifstream stream(it->path().string());
             
-            if (it->path().filename() != meta_c) {
+            if (!boost::algorithm::ends_with(it->path().filename().string(), ".meta")) {
+                const std::string fn = it->path().filename().string();
                 result.push_back(
                     item_t(
-                        it->path().filename().string(),
-                        std::vector<char>((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>())                         
+                        fn,
+                        read_file((fs::directory_entry(path).path() / fn).string()),
+                        parse_meta(read_file((fs::directory_entry(path).path() / metaname(fn)).string()))                        
                     )
                 );  
             }
@@ -164,22 +162,35 @@ struct fs_storage_t : storage_t {
         return result;
     };
     
-    virtual item_t do_read(const std::string& fn) {
-        for(auto it = files_begin(); it != files_end(); ++it) {
-            if (it->path().filename().string() == fn) {
-                std::ifstream stream(it->path().string());
-                return item_t(
-                    it->path().filename().string(),
-                    std::vector<char>((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>())                         
-                );
-            }
-        }
+    virtual item_t read(const std::string& fn) {
+        return item_t(
+            fn,
+            read_file((fs::directory_entry(path).path() / fn).string()),
+            parse_meta(read_file((fs::directory_entry(path).path() / metaname(fn)).string()))
+        );
         throw std::runtime_error("such file not found");
     };
     
-    virtual item_t do_write(const item_t& item) {
+    virtual item_t write(const item_t& item) {
+        write_file((fs::directory_entry(path).path() / (item.filename)).string(), item.data);
+        write_file((fs::directory_entry(path).path() / metaname(item.filename)).string(), write_meta(item.attributes));
+        
+        return read(item.filename);
+    }
+    
+    Bytes read_file(const std::string& filepath) {
+        try {
+            std::ifstream stream(filepath);
+            return Bytes((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+        }
+        catch(...) {
+            return Bytes();
+        }
+    }
+    
+    void write_file(const std::string& filepath, const Bytes& data) {
         std::shared_ptr<FILE> file(
-            ::fopen((fs::directory_entry(path).path() / (item.filename)).native().c_str(), "w+"),
+            ::fopen(filepath.c_str(), "w+"),
             ::fclose
         );
         
@@ -187,14 +198,12 @@ struct fs_storage_t : storage_t {
             throw std::runtime_error("can't open file for writing");
         }
         
-        int res = ::fwrite(item.data.data(), 1, item.data.size(), file.get());
-        if (res != item.data.size()) {
+        int res = ::fwrite(data.data(), 1, data.size(), file.get());
+        if (res != data.size()) {
             throw std::runtime_error("can't write file");
         }
         
         file.reset();
-        
-        return read(item.filename);
     }
     
     std::string path;
@@ -269,7 +278,7 @@ struct shell_storage_t : storage_t {
         return last_present_;
     }
       
-    virtual std::list<item_t> do_items() {
+    virtual std::list<item_t> items() {
         std::list<item_t> result;
         
         std::vector<std::string> files;
@@ -298,13 +307,16 @@ struct shell_storage_t : storage_t {
         return result;
     }
     
-    virtual item_t do_read(const std::string& fn) {
+    virtual item_t read(const std::string& fn) {
         std::string read = read_;
         boost::replace_all(read, "%FILE%", fn);
+        std::string read_meta = read_;
+        boost::replace_all(read_meta, "%FILE%", metaname(fn));
         try {
             return item_t {
                 fn,
-                piped(read)
+                piped(read),
+                parse_meta(piped(read_meta))
             };
         }
         catch(const std::exception& e) {
@@ -317,11 +329,14 @@ struct shell_storage_t : storage_t {
         }
     }
     
-    virtual item_t do_write(const item_t& item) {
-        std::string write = write_;
-        boost::replace_all(write, "%FILE%", item.filename);
+    virtual item_t write(const item_t& item) {
+        std::string write_cmd, write_meta_cmd = write_;
+        boost::replace_all(write_cmd, "%FILE%", item.filename);
+        boost::replace_all(write_meta_cmd, "%FILE%", metaname(item.filename));
+        
         try {
-            piped(write, item.data);
+            piped(write_cmd, item.data);
+            piped(write_meta_cmd, write_meta(item.attributes));
         }
         catch(const std::exception& e) {
             timestamp_ = 0;
@@ -367,9 +382,9 @@ struct crypt_storage_t : storage_t {
         return prev->present();
     }
     
-    virtual std::list<item_t> do_items() {
+    virtual std::list<item_t> items() {
         std::list<item_t> result;
-        for(auto item: prev->do_items()) {
+        for(auto item: prev->items()) {
             try {
               const item_t d = decrypt(item);
               if (!d.data.empty()) {
@@ -383,11 +398,11 @@ struct crypt_storage_t : storage_t {
         return result;
     }
     
-    virtual item_t do_read(const std::string& fn) {
+    virtual item_t read(const std::string& fn) {
         return decrypt(prev->read(fn));
     }
     
-    virtual item_t do_write(const item_t& item) {
+    virtual item_t write(const item_t& item) {
         return decrypt(prev->write(encrypt(item)));
     }
     
@@ -395,7 +410,8 @@ struct crypt_storage_t : storage_t {
         try {
             return item_t {
                 item.filename,
-                piped(decrypt_, item.data)
+                piped(decrypt_, item.data),
+                item.attributes
             };
         } catch(const std::exception& e) {
             throw pkcs11_exception_t(CKR_DEVICE_ERROR, std::string("failed to decrypt file: ") + e.what());
@@ -406,7 +422,8 @@ struct crypt_storage_t : storage_t {
         try {
             return item_t {
                 item.filename,
-                piped(encrypt_, item.data)
+                piped(encrypt_, item.data),
+                item.attributes
             };
         } catch(const std::exception& e) {
             throw pkcs11_exception_t(CKR_DEVICE_ERROR, std::string("failed to decrypt file: ") + e.what());

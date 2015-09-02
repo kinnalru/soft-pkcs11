@@ -12,15 +12,15 @@
 #include "tools.h"
 
 struct item_t {
-    item_t(const std::string& fn, const std::vector<char>& d, const MetaAttributes& m = MetaAttributes())
+    item_t(const std::string& fn, const std::vector<char>& d, const Attributes& a = Attributes())
         : filename(fn)
         , data(d)
-        , meta(m)
+        , attributes(a)
     {}
     
     const std::string filename;
     const std::vector<char> data;
-    MetaAttributes meta;
+    Attributes attributes;
 };
 
 struct storage_t {
@@ -28,10 +28,10 @@ struct storage_t {
     virtual ~storage_t(){};
     
     static std::shared_ptr<storage_t> create(const boost::property_tree::ptree& config, const std::string& pin = std::string());
-    
-    std::list<item_t> items();
-    virtual item_t read(const std::string& fn);
-    virtual item_t write(const item_t& item);
+
+    virtual std::list<item_t> items() = 0;
+    virtual item_t read(const std::string& fn) = 0;
+    virtual item_t write(const item_t& item) = 0;
     
     virtual bool present() const = 0;
     virtual void set_pin(const std::string& pin) = 0;
@@ -52,11 +52,6 @@ protected:
     storage_t(const storage_t& other) = delete;
     storage_t& operator=(const storage_t& other) = delete;
 
-    friend class crypt_storage_t;    
-    virtual std::list<item_t> do_items() = 0;
-    virtual item_t do_read(const std::string& fn) = 0;
-    virtual item_t do_write(const item_t& item) = 0;
-    
     const std::string& name() const {return name_;};
 
     std::string name_;

@@ -43,13 +43,19 @@ struct attribute_t {
         return reinterpret_cast<T>(attr_.pValue);
     }
     
+    template<typename T>
+    inline T to_value() const {
+        return (attr_.pValue) 
+            ? *(reinterpret_cast<T*>(attr_.pValue))
+            : 0;
+    }
+    
     inline CK_OBJECT_HANDLE to_handle() const {
-        if (attr_.pValue) {
-          return *(reinterpret_cast<CK_OBJECT_HANDLE*>(attr_.pValue));
-        }
-        else {
-          return 0;
-        }
+        return to_value<CK_OBJECT_HANDLE>();
+    }
+    
+    inline CK_ULONG to_id() const {
+        return to_value<CK_ULONG>();
     }
     
     inline const std::string to_string() const {

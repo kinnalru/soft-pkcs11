@@ -51,9 +51,9 @@ Attributes public_key_t::operator()(descriptor_p desc, const Attributes& attribu
     
     CK_ULONG id = desc->id;
     
-    if (desc->item.meta.find(CKA_ID) != desc->item.meta.end()) {
-      id = boost::lexical_cast<CK_ULONG>(desc->item.meta.find(CKA_ID)->second);
-    }
+//     if (desc->item.meta.find(CKA_ID) != desc->item.meta.end()) {
+//       id = boost::lexical_cast<CK_ULONG>(desc->item.meta.find(CKA_ID)->second);
+//     }
     
     st_logf("\n\n\nID FROM META: %lu\n", id);
     
@@ -154,9 +154,9 @@ Attributes private_key_t::operator()(descriptor_p desc, const Attributes& attrib
     
     CK_ULONG id = desc->id;
     
-    if (desc->item.meta.find(CKA_ID) != desc->item.meta.end()) {
-      id = boost::lexical_cast<CK_ULONG>(desc->item.meta.find(CKA_ID)->second);
-    }
+//     if (desc->item.meta.find(CKA_ID) != desc->item.meta.end()) {
+//       id = boost::lexical_cast<CK_ULONG>(desc->item.meta.find(CKA_ID)->second);
+//     }
     
     st_logf("\n\n\nID FROM META: %lu\n", id);
     
