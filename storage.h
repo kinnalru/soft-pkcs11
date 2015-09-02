@@ -8,6 +8,7 @@
 
 #include <boost/property_tree/ptree.hpp>
 
+#include "types.h"
 #include "tools.h"
 
 struct item_t {
@@ -18,7 +19,7 @@ struct item_t {
     
     const std::string filename;
     const std::vector<char> data;
-    std::map<int, std::string> meta;
+    MetaAttributes meta;
 };
 
 struct storage_t {
@@ -27,11 +28,11 @@ struct storage_t {
     
     static std::shared_ptr<storage_t> create(const boost::property_tree::ptree& config, const std::string& pin = std::string());
     
-    virtual bool present() const = 0;
-    virtual std::list<item_t> items() = 0;
-    virtual item_t read(const std::string& fn) = 0;
-    virtual item_t write(const item_t& item) = 0;
+    std::list<item_t> items();
+    virtual item_t read(const std::string& fn);
+    virtual item_t write(const item_t& item);
     
+    virtual bool present() const = 0;
     virtual void set_pin(const std::string& pin) = 0;
     
     std::string full_name() const {
@@ -49,6 +50,11 @@ protected:
         : name_(n), prev(s), config_(c){};
     storage_t(const storage_t& other) = delete;
     storage_t& operator=(const storage_t& other) = delete;
+
+    friend class crypt_storage_t;    
+    virtual std::list<item_t> do_items() = 0;
+    virtual item_t do_read(const std::string& fn) = 0;
+    virtual item_t do_write(const item_t& item) = 0;
     
     const std::string& name() const {return name_;};
 
