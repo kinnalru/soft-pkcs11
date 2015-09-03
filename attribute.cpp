@@ -58,13 +58,14 @@ bool attribute_t::operator!=(const attribute_t& other) const
     return !(*this == other);
 }
 
+#include "tools.h"
 
 attribute_t& attribute_t::operator=(const CK_ATTRIBUTE& other) {
-    ptr_.reset(malloc(other.ulValueLen), free);
-    
-    if (!ptr_.get()) throw std::bad_alloc();
-    
-    memcpy(ptr_.get(), other.pValue, other.ulValueLen);
+    if (other.ulValueLen != -1) {
+        ptr_.reset(malloc(other.ulValueLen), free);
+        if (!ptr_.get()) throw std::bad_alloc();
+        memcpy(ptr_.get(), other.pValue, other.ulValueLen);
+    }
     
     attr_.type = other.type;
     attr_.pValue = ptr_.get();

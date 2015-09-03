@@ -513,7 +513,7 @@ CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, 
         }
     }
     
-    st_logf(" output ");
+    st_logf(" output \n");
     //print_attributes(pTemplate, ulCount);
     return CKR_OK;
 }
@@ -746,7 +746,6 @@ CK_RV C_CreateObject(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, CK_
     label = label + suf;
     
     print_attributes(pTemplate, ulCount);
-    st_logf("WRITE: %s  -  %s\n", label.c_str(), value.data());
     
     try {
       id = soft_token->write(label, value, attrs);
@@ -765,6 +764,7 @@ CK_RV C_CreateObject(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, CK_
     if (id != soft_token_t::handle_invalid()) {
         *phObject = id;
         st_logf("object created %lu\n", id);
+        print_attributes(soft_token->attributes(id));
         return CKR_OK;
     }
     

@@ -131,7 +131,9 @@ struct to_attributes : std::unary_function<const fs::directory_entry&, Objects::
             attrs = o(desc, attrs);
         }
         
-        st_logf("      - ID[%lu] - ID[%lu]\n", desc->id, attrs[CKA_OBJECT_ID].to_handle());      
+        BOOST_FOREACH(auto& attr, item.attributes) {
+            attrs[attr.first] = attr.second;
+        }
         
         return std::make_pair(desc->id, attrs);
     }
@@ -649,16 +651,15 @@ void soft_token_t::reset()
     st_logf("    cheking...\n");
     to_attributes convert(p_->objects);
     for(auto item: p_->storage->items()) {
+        st_logf("    Finded object: %s\n", item.filename.c_str());
         const auto a = p_->objects.insert(convert(item)).first;
-        st_logf("    Finded obejcts: %s %lu\n", item.filename.c_str(), a->first);
+        st_logf("           object: %lu\n", a->first);
     }
     
     const CK_OBJECT_CLASS public_key_c = CKO_PUBLIC_KEY;
     const CK_OBJECT_CLASS private_key_c = CKO_PRIVATE_KEY;
 
 
-    st_logf("    1\n");
-    
     for(auto& private_key: p_->objects | filtered(by_attrs({create_object(CKA_CLASS, private_key_c)}))) {
         auto public_range = p_->objects
             | filtered(by_attrs({create_object(CKA_CLASS, public_key_c)}))
@@ -677,7 +678,8 @@ void soft_token_t::reset()
     st_logf("2\n");
     
     for(auto it = p_->objects.begin(); it != p_->objects.end(); ++it ) {
-//             st_logf("  *** Final obejct: %s %s - %s\n", it->second.at(CKA_LABEL)->pValue, std::to_string(it->first).c_str(), it->second.at(CKA_ID).to_string().c_str());
+      st_logf("  *** Final obejct: %s %s - %lu\n", it->second.at(CKA_LABEL).to_string().c_str(), std::to_string(it->first).c_str(), it->second.at(CKA_ID).to_id());
+      print_attributes(it->second);
     }
 }
 

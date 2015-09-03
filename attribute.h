@@ -58,8 +58,14 @@ struct attribute_t {
         return to_value<CK_ULONG>();
     }
     
+    inline const std::string to_object_id() const {
+        return to_string();
+    }
+    
     inline const std::string to_string() const {
-        return std::string(reinterpret_cast<char*>(attr_.pValue), attr_.ulValueLen);
+        return (attr_.pValue) 
+            ? std::string(reinterpret_cast<char*>(attr_.pValue), attr_.ulValueLen)
+            : std::string("");
     }
     
     inline const std::vector<unsigned char> to_bytes() const {
@@ -67,7 +73,17 @@ struct attribute_t {
     }
     
     inline bool to_bool() const {
+        if (attr_.ulValueLen != sizeof(CK_BBOOL)) {
+            throw std::runtime_error("can't cast to CK_BBOOL: invalid value length");
+        }
         return attr_.pValue && *(reinterpret_cast<CK_BBOOL*>(attr_.pValue)) == CK_TRUE;
+    }
+    
+    inline CK_OBJECT_CLASS to_class() const {
+        if (attr_.ulValueLen != sizeof(CK_OBJECT_CLASS)) {
+            throw std::runtime_error("can't cast to CK_OBJECT_CLASS: invalid value length");
+        }
+        return to_value<CK_OBJECT_CLASS>();
     }
     
 private:

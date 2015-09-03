@@ -4,11 +4,13 @@
 #include "pkcs11/pkcs11u.h"
 #include "pkcs11/pkcs11.h"
 
+#include "types.h"
 #include "attribute.h"
 
 void st_logf(const char *fmt, ...);
 
-void print_attributes(const CK_ATTRIBUTE *attributes, CK_ULONG num_attributes); 
+void print_attributes(const CK_ATTRIBUTE *attributes, CK_ULONG num_attributes);
+void print_attributes(const Attributes& attributes); 
 
 std::pair<int, std::shared_ptr<unsigned char>> read_bignum(void* ssl_bignum);
 

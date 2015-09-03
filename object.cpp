@@ -32,7 +32,7 @@ Attributes data_object_t::operator()(descriptor_p desc, const Attributes& attrib
         
         //Data Object Attributes
         //create_object(CKA_APPLICATION, desc->id),
-        create_object(CKA_OBJECT_ID,  desc->id),
+        create_object(CKA_OBJECT_ID,  boost::lexical_cast<std::string>(desc->id)),
         //create_object(CKA_VALUE, desc->id), //read when needed
     };
 
@@ -50,12 +50,6 @@ Attributes public_key_t::operator()(descriptor_p desc, const Attributes& attribu
     const CK_MECHANISM_TYPE mech_type = CKM_RSA_X_509;    
     
     CK_ULONG id = desc->id;
-    
-//     if (desc->item.meta.find(CKA_ID) != desc->item.meta.end()) {
-//       id = boost::lexical_cast<CK_ULONG>(desc->item.meta.find(CKA_ID)->second);
-//     }
-    
-    st_logf("\n\n\nID FROM META: %lu\n", id);
     
     Attributes attrs = {
         create_object(CKA_CLASS,     klass),
@@ -154,12 +148,6 @@ Attributes private_key_t::operator()(descriptor_p desc, const Attributes& attrib
     
     CK_ULONG id = desc->id;
     
-//     if (desc->item.meta.find(CKA_ID) != desc->item.meta.end()) {
-//       id = boost::lexical_cast<CK_ULONG>(desc->item.meta.find(CKA_ID)->second);
-//     }
-    
-    st_logf("\n\n\nID FROM META: %lu\n", id);
-    
     Attributes attrs = {
         create_object(CKA_CLASS,     klass),
         
@@ -214,7 +202,6 @@ Attributes rsa_private_key_t::operator()(descriptor_p desc, const Attributes& at
         create_object(CKA_KEY_TYPE,  type),
     };
     
-    st_logf("  ..... before\n");
     if (EVP_PKEY *pkey = PEM_read_PrivateKey(desc->file.get(), NULL, NULL, const_cast<char*>(""))) {
         int size = 0;
         std::shared_ptr<unsigned char> buf;
@@ -229,7 +216,6 @@ Attributes rsa_private_key_t::operator()(descriptor_p desc, const Attributes& at
 
         EVP_PKEY_free(pkey);
     }
-    st_logf("  ..... after\n");
     
     //keys in attrs takes precedence with attributes
     attrs.insert(base_attrs.begin(), base_attrs.end());

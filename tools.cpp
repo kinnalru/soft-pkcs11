@@ -38,91 +38,75 @@ void st_logf(const char* fmt, ...)
     
 //     fsync(log_fd);
 }
- 
+
 void print_attributes(const CK_ATTRIBUTE *attributes, CK_ULONG num_attributes)
+{
+    Attributes attrs;
+    for (CK_ULONG i = 0; i < num_attributes; i++) {
+        attrs[attributes[i].type] = attributes[i];
+    }  
+    print_attributes(attrs);
+}
+
+void print_attributes(const Attributes& attributes)
 {
     CK_ULONG i;
 
-    st_logf("Print attributes: %lu\n", num_attributes);
+    st_logf("Print attributes: %lu\n", attributes.size());
 
-    for (i = 0; i < num_attributes; i++) {
-        switch (attributes[i].type) {
+    for (auto it = attributes.begin(); it != attributes.end(); ++it) {
+        const attribute_t& attr = it->second;
+        
+        switch (it->first) {
         case CKA_TOKEN: {
-            st_logf("1\n");
-            if (attributes[i].ulValueLen != sizeof(CK_BBOOL)) {
-                st_logf("2\n");
-                st_logf("  * token attribute(%d) wrong length size: <%d>\n", CKA_TOKEN, attributes[i].ulValueLen);
-                break;
-            }
-            st_logf("3\n");
-            st_logf("  * type: <token> size: <%d> value: <%s>\n", attributes[i].ulValueLen, *((CK_BBOOL*)attributes[i].pValue) ? "TRUE" : "FALSE");
+            st_logf("  A type: <CKA_TOKEN> size: <%d> value: <%s>\n", attr->ulValueLen, (attr.to_bool()) ? "TRUE" : "FALSE");
             break;
         }
         case CKA_CLASS: {
-            
-            st_logf("4\n");
-            if (attributes[i].ulValueLen != sizeof(CK_ULONG)) {
-                st_logf("5\n");
-                st_logf("  * token attribute(%d) wrong length size: <%d>\n", CKA_CLASS, attributes[i].ulValueLen);
-                break;
-            }
-            st_logf("6\n");
-            CK_OBJECT_CLASS klass = *((CK_OBJECT_CLASS*)attributes[i].pValue);
-            st_logf("7\n");
+            CK_OBJECT_CLASS klass = attr.to_class();
             switch (klass) {
             case CKO_CERTIFICATE:
-                st_logf("  * type: <class> size: <%d> value: <%s>\n", attributes[i].ulValueLen, "certificate");
+                st_logf("  A type: <CKA_CLASS> size: <%d> value: <%s>\n", attr->ulValueLen, "certificate");
                 break;
             case CKO_PUBLIC_KEY:
-                st_logf("  * type: <class> size: <%d> value: <%s>\n", attributes[i].ulValueLen, "public key");
+                st_logf("  A type: <CKA_CLASS> size: <%d> value: <%s>\n", attr->ulValueLen, "public key");
                 break;
             case CKO_PRIVATE_KEY:
-                st_logf("  * type: <class> size: <%d> value: <%s>\n", attributes[i].ulValueLen, "private key");
+                st_logf("  A type: <CKA_CLASS> size: <%d> value: <%s>\n", attr->ulValueLen, "private key");
                 break;
             case CKO_SECRET_KEY:
-                st_logf("  * type: <class> size: <%d> value: <%s>\n", attributes[i].ulValueLen, "secret key");
+                st_logf("  A type: <CKA_CLASS> size: <%d> value: <%s>\n", attr->ulValueLen, "secret key");
                 break;
             case CKO_DOMAIN_PARAMETERS:
-                st_logf("  * type: <class> size: <%d> value: <%s>\n", attributes[i].ulValueLen, "domain parameters");
+                st_logf("  A type: <CKA_CLASS> size: <%d> value: <%s>\n", attr->ulValueLen, "domain parameters");
                 break;
             default:
-                st_logf("  * type: <class> size: <%d> value: [class 0x%08lx]\n", attributes[i].ulValueLen, klass);
+                st_logf("  A type: <CKA_CLASS> size: <%d> value: [class 0x%08lx]\n", attr->ulValueLen, klass);
                 break;
             }
             break;
         }
         case CKA_PRIVATE:
-            st_logf("8\n");
-            st_logf("  * type: <private> size: <%d>\n", attributes[i].ulValueLen);
+            st_logf("  A type: <CKA_PRIVATE> size: <%d>\n", attr->ulValueLen);
             break;
         case CKA_LABEL:
-            st_logf("9\n");
-            st_logf("  * type: <label> size: <%d> value: <%s>\n", attributes[i].ulValueLen, attributes[i].pValue);
+            st_logf("  A type: <CKA_LABEL> size: <%d>       value: <%s>\n", attr->ulValueLen, attr.to_string().c_str());
             break;
         case CKA_APPLICATION:
-            st_logf("  * type: <application> size: <%d>\n", attributes[i].ulValueLen);
+            st_logf("  A type: <CKA_APPLICATION> size: <%d> value: <%s>\n", attr->ulValueLen, attr.to_string().c_str());
             break;
         case CKA_VALUE:
-            st_logf("  * type: <value> size: <%d>\n", attributes[i].ulValueLen);
+            st_logf("  A type: <CKA_VALUE> size: <%d>\n", attr->ulValueLen);
             break;
         case CKA_ID:
-            if (reinterpret_cast<CK_ULONG>(attributes[i].pValue)) {
-                st_logf("  * type: <key id> size: <%d> value: <%lu>\n", attributes[i].ulValueLen, *(CK_OBJECT_HANDLE*)attributes[i].pValue);
-            } else {
-                st_logf("  * type: <key id> size: <%d> value: <%lu>\n", attributes[i].ulValueLen, (CK_OBJECT_HANDLE*)attributes[i].pValue);
-            }
-            
+            st_logf("  A type: <CKA_ID> size: <%d> value: <%lu>\n", attr->ulValueLen, attr.to_id());
             break;
         case CKA_OBJECT_ID:
-            if (reinterpret_cast<CK_ULONG>(attributes[i].pValue)) {
-                st_logf("  * type: <id> size: <%d> value: <%lu>\n", attributes[i].ulValueLen, *(CK_OBJECT_HANDLE*)attributes[i].pValue);
-            } else {
-                st_logf("  * type: <id> size: <%d> value: <%lu>\n", attributes[i].ulValueLen, (CK_OBJECT_HANDLE*)attributes[i].pValue);
-            }
+            st_logf("  A type: <CKA_OBJECT_ID> size: <%d> value: <%s>\n", attr->ulValueLen, attr.to_object_id().c_str());
 
             break;
         default:
-            st_logf("  * type: <UNKNOWN> size: <%d> type: [0x%08lx]\n", attributes[i].ulValueLen, attributes[i].type);
+            st_logf("  A type: <UNKNOWN> size: <%d> type: [0x%08lx]\n", attr->ulValueLen, attr->type);
             break;
         }
     }

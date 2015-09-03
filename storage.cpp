@@ -486,8 +486,6 @@ descriptor_t::descriptor_t(const item_t& it)
     
     id = to_object_id()(item.filename);
     
-    st_logf("File: %s hash %lu\n", item.filename.c_str(), id);
-    
     void* src = const_cast<char*>(item.data.data());
     file.reset(
         ::fmemopen(src, item.data.size(), "r"),
