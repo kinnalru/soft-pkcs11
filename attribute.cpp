@@ -42,12 +42,12 @@ attribute_t::attribute_t(CK_ATTRIBUTE_TYPE type, const std::vector<char>& bytes)
     this->operator=(other);
 }
 
+#include "tools.h"
 
 bool attribute_t::operator==(const attribute_t& other) const
 {
     if (other.attr_.type != attr_.type) return false;
     if (other.attr_.ulValueLen != attr_.ulValueLen) return false;
-    
     if (other.attr_.pValue == NULL_PTR && attr_.pValue == NULL_PTR) return true;
     
     return memcmp(other.ptr_.get(), ptr_.get(), attr_.ulValueLen) == 0;
@@ -58,10 +58,9 @@ bool attribute_t::operator!=(const attribute_t& other) const
     return !(*this == other);
 }
 
-#include "tools.h"
-
 attribute_t& attribute_t::operator=(const CK_ATTRIBUTE& other) {
-    if (other.ulValueLen != -1) {
+    
+    if (other.ulValueLen != -1 && other.pValue != 0) {
         ptr_.reset(malloc(other.ulValueLen), free);
         if (!ptr_.get()) throw std::bad_alloc();
         memcpy(ptr_.get(), other.pValue, other.ulValueLen);

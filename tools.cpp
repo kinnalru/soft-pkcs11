@@ -62,6 +62,10 @@ void print_attributes(const Attributes& attributes)
             st_logf("  A type: <CKA_TOKEN> size: <%d> value: <%s>\n", attr->ulValueLen, (attr.to_bool()) ? "TRUE" : "FALSE");
             break;
         }
+        case CKA_KEY_TYPE: {
+            st_logf("  A type: <CKA_KEY_TYPE> size: <%d> value: <%lu>\n", attr->ulValueLen, attr.to_value<CK_KEY_TYPE>());
+            break;
+        }
         case CKA_CLASS: {
             CK_OBJECT_CLASS klass = attr.to_class();
             switch (klass) {

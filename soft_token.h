@@ -2,6 +2,8 @@
 #define ST_SOFT_TOKEN_H
 
 #include "types.h"
+#include <boost/iterator/filter_iterator.hpp>
+
 
 
 typedef std::vector<CK_OBJECT_HANDLE> Handles;
@@ -9,6 +11,10 @@ typedef std::function<CK_OBJECT_HANDLE()> handle_iterator_t;
 
 typedef std::map<CK_ATTRIBUTE_TYPE, attribute_t> Attributes;
 typedef std::map<CK_OBJECT_HANDLE, Attributes> Objects;
+
+typedef std::function<bool(const Objects::value_type&)> ObjectsPred;
+typedef boost::filter_iterator<ObjectsPred, Objects::iterator> ObjectsIterator;
+
 
 class soft_token_t {
 public:
@@ -27,8 +33,9 @@ public:
     
     Handles handles() const;
     
-    handle_iterator_t handles_iterator();
-    handle_iterator_t find_handles_iterator(Attributes attrs);
+    ObjectsIterator begin();
+    ObjectsIterator begin(Attributes attrs);
+    ObjectsIterator end();
     static CK_OBJECT_HANDLE handle_invalid();    
     
     Attributes attributes(CK_OBJECT_HANDLE id) const;

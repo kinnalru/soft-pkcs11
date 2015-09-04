@@ -72,7 +72,7 @@ struct session_t {
     
     
     const CK_SESSION_HANDLE id;
-    handle_iterator_t objects_iterator;
+    ObjectsIterator objects_iterator;
     CK_OBJECT_HANDLE sign_key;
     CK_MECHANISM sign_mechanism;
     
@@ -353,6 +353,15 @@ CK_RV C_GetSessionInfo(CK_SESSION_HANDLE hSession, CK_SESSION_INFO_PTR pInfo)
     return CKR_OK;
 }
 
+const std::set<CK_ATTRIBUTE_TYPE> public_attributes = {
+    CKA_CLASS, CKA_LABEL, CKA_APPLICATION, CKA_OBJECT_ID, CKA_MODIFIABLE,
+    CKA_PRIVATE, CKA_TOKEN, CKA_DERIVE, CKA_LOCAL, CKA_KEY_GEN_MECHANISM, 
+    CKA_ENCRYPT, CKA_VERIFY, CKA_KEY_TYPE, CKA_MODULUS, CKA_MODULUS_BITS, 
+    CKA_PUBLIC_EXPONENT, CKA_SENSITIVE, CKA_DECRYPT, CKA_SIGN, 
+    CKA_SIGN_RECOVER, CKA_UNWRAP, CKA_EXTRACTABLE, CKA_NEVER_EXTRACTABLE,
+    CKA_ALWAYS_AUTHENTICATE, CKA_ID, CKA_WRAP, CKA_CERTIFICATE_TYPE
+};
+
 CK_RV C_FindObjectsInit(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, CK_ULONG ulCount)
 {
     st_logf(" ** C_FindObjectsInit: Session: %d ulCount: %d\n", hSession, ulCount);
@@ -366,27 +375,33 @@ CK_RV C_FindObjectsInit(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, 
         return CKR_SESSION_HANDLE_INVALID;
     }
     
-    if (!soft_token->logged()) {
-        if (!soft_token->ssh_agent()) {
-            return CKR_USER_NOT_LOGGED_IN;
-        }
-    }  
-    
-    print_attributes(pTemplate, ulCount);
+
     
     if (ulCount) {
         
         Attributes attrs;
+
+        print_attributes(pTemplate, ulCount);
         
         for (CK_ULONG i = 0; i < ulCount; i++) {
             attrs[pTemplate[i].type] = pTemplate[i];
+            
+            if (public_attributes.find(pTemplate[i].type) == public_attributes.end()) {
+                if (!soft_token->logged()) {
+                    if (!soft_token->ssh_agent()) {
+                        return CKR_USER_NOT_LOGGED_IN;
+                    }
+                }              
+            }
         }
-        
-        session->objects_iterator = soft_token->find_handles_iterator(attrs);
+
+
+
+        session->objects_iterator = soft_token->begin(attrs);
         st_logf(" == find initialized\n");
     } else {
         st_logf(" == find all objects\n");
-        session->objects_iterator = soft_token->handles_iterator();
+        session->objects_iterator = soft_token->begin();
     }
 
     return CKR_OK;
@@ -415,18 +430,21 @@ CK_RV C_FindObjects(CK_SESSION_HANDLE hSession,
     *pulObjectCount = 0;
 
     try {
-        for(auto id = session->objects_iterator(); id != soft_token->handle_invalid(); id = session->objects_iterator()) {
+        auto& it = session->objects_iterator;
+        
+        while(it != soft_token->end()) {
+            st_logf("found id %lu\n", it->first);
             
-            st_logf("found id %lu\n", id);
-            
-            *phObject++ = id;
+            *phObject++ = it->first;
             (*pulObjectCount)++;
             ulMaxObjectCount--;
+            ++it;
+            
             if (ulMaxObjectCount == 0) break;        
         }
     }
-    catch(...) {
-      
+    catch(const std::exception& e) {
+        st_logf("Error:  %s\n", e.what());
     }
     
     st_logf("  == pulObjectCount: %lu\n", *pulObjectCount);
@@ -439,14 +457,7 @@ CK_RV C_FindObjectsFinal(CK_SESSION_HANDLE hSession)
     return CKR_OK;
 }
 
-const std::set<CK_ATTRIBUTE_TYPE> public_attributes = {
-    CKA_CLASS, CKA_LABEL, CKA_APPLICATION, CKA_OBJECT_ID, CKA_MODIFIABLE,
-    CKA_PRIVATE, CKA_TOKEN, CKA_DERIVE, CKA_LOCAL, CKA_KEY_GEN_MECHANISM, 
-    CKA_ENCRYPT, CKA_VERIFY, CKA_KEY_TYPE, CKA_MODULUS, CKA_MODULUS_BITS, 
-    CKA_PUBLIC_EXPONENT, CKA_SENSITIVE, CKA_DECRYPT, CKA_SIGN, 
-    CKA_SIGN_RECOVER, CKA_UNWRAP, CKA_EXTRACTABLE, CKA_NEVER_EXTRACTABLE,
-    CKA_ALWAYS_AUTHENTICATE, CKA_ID, CKA_WRAP
-};
+
 
 
 CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, CK_ATTRIBUTE_PTR pTemplate, CK_ULONG ulCount)
@@ -470,10 +481,11 @@ CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, 
     }
     
    
-    st_logf(" input ");
+    st_logf(" input \n");
     print_attributes(pTemplate, ulCount);
 
     auto attrs = soft_token->attributes(hObject);
+    
     
     for (i = 0; i < ulCount; i++) {
         if (public_attributes.find(pTemplate[i].type) == public_attributes.end()) {
@@ -514,7 +526,7 @@ CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, 
     }
     
     st_logf(" output \n");
-    //print_attributes(pTemplate, ulCount);
+    print_attributes(pTemplate, ulCount);
     return CKR_OK;
 }
 

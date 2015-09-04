@@ -186,22 +186,6 @@ Attributes private_key_t::operator()(descriptor_p desc, const Attributes& attrib
 
     };
     
-    //keys in attrs takes precedence with attributes 
-    attrs.insert(base_attrs.begin(), base_attrs.end());
-
-    return attrs;  
-}
-
-Attributes rsa_private_key_t::operator()(descriptor_p desc, const Attributes& attributes) const
-{
-    const Attributes base_attrs = private_key_t::operator()(desc, attributes);
-
-    const CK_KEY_TYPE type = CKK_RSA;
-    
-    Attributes attrs = {
-        create_object(CKA_KEY_TYPE,  type),
-    };
-    
     if (EVP_PKEY *pkey = PEM_read_PrivateKey(desc->file.get(), NULL, NULL, const_cast<char*>(""))) {
         int size = 0;
         std::shared_ptr<unsigned char> buf;
@@ -209,19 +193,66 @@ Attributes rsa_private_key_t::operator()(descriptor_p desc, const Attributes& at
         std::tie(size, buf) = read_bignum(pkey->pkey.rsa->n);
         attrs.insert(std::make_pair(CKA_MODULUS, attribute_t(CKA_MODULUS, buf.get(), size)));
         
-         st_logf("  ..... CKA_MODULUS: %lu\n", attrs[CKA_MODULUS].to_handle());
-        
         std::tie(size, buf) = read_bignum(pkey->pkey.rsa->e);
         attrs.insert(std::make_pair(CKA_PUBLIC_EXPONENT, attribute_t(CKA_PUBLIC_EXPONENT, buf.get(), size)));
 
+        switch (EVP_PKEY_type(pkey->type)) {
+            case EVP_PKEY_RSA:
+                attrs[CKA_KEY_TYPE] = attribute_t(CKA_KEY_TYPE, (CK_KEY_TYPE)CKK_RSA);
+                break;
+            case EVP_PKEY_DSA:
+                attrs[CKA_KEY_TYPE] = attribute_t(CKA_KEY_TYPE, (CK_KEY_TYPE)CKK_DSA);
+                break;
+            case EVP_PKEY_DH:
+                attrs[CKA_KEY_TYPE] = attribute_t(CKA_KEY_TYPE, (CK_KEY_TYPE)CKK_DH);
+                break;
+            case EVP_PKEY_EC:
+                attrs[CKA_KEY_TYPE] = attribute_t(CKA_KEY_TYPE, (CK_KEY_TYPE)CKK_EC);
+                break;
+        };
+        
         EVP_PKEY_free(pkey);
     }
     
-    //keys in attrs takes precedence with attributes
+    
+    
+    
+    //keys in attrs takes precedence with attributes 
     attrs.insert(base_attrs.begin(), base_attrs.end());
 
-    return attrs; 
+    return attrs;  
 }
+
+// Attributes rsa_private_key_t::operator()(descriptor_p desc, const Attributes& attributes) const
+// {
+//     const Attributes base_attrs = private_key_t::operator()(desc, attributes);
+// 
+//     const CK_KEY_TYPE type = CKK_RSA;
+//     
+//     Attributes attrs = {
+//         create_object(CKA_KEY_TYPE,  type),
+//     };
+//     
+//     if (EVP_PKEY *pkey = PEM_read_PrivateKey(desc->file.get(), NULL, NULL, const_cast<char*>(""))) {
+//         int size = 0;
+//         std::shared_ptr<unsigned char> buf;
+//         
+//         std::tie(size, buf) = read_bignum(pkey->pkey.rsa->n);
+//         attrs.insert(std::make_pair(CKA_MODULUS, attribute_t(CKA_MODULUS, buf.get(), size)));
+//         
+//          st_logf("  ..... CKA_MODULUS: %lu\n", attrs[CKA_MODULUS].to_handle());
+//         
+//         std::tie(size, buf) = read_bignum(pkey->pkey.rsa->e);
+//         attrs.insert(std::make_pair(CKA_PUBLIC_EXPONENT, attribute_t(CKA_PUBLIC_EXPONENT, buf.get(), size)));
+// 
+//         EVP_PKEY_free(pkey);
+//     }
+//     
+//     //keys in attrs takes precedence with attributes
+//     attrs.insert(base_attrs.begin(), base_attrs.end());
+// 
+//     return attrs; 
+// }
 
 Attributes secrete_key_t::operator()(descriptor_p desc, const Attributes& attributes) const
 {

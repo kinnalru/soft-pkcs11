@@ -13,7 +13,6 @@
 #include <functional>
 
 #include <boost/bind.hpp>
-#include <boost/iterator/filter_iterator.hpp>
 #include <boost/iterator/transform_iterator.hpp>
 #include <boost/range/adaptors.hpp>
 #include <boost/foreach.hpp>
@@ -65,15 +64,16 @@ struct is_ssh_public_key : std::unary_function<descriptor_p, bool> {
 
 struct is_private_key : std::unary_function<descriptor_p, bool> {
     bool operator() (descriptor_p desc) {
-        return desc->first_line == "-----BEGIN RSA PRIVATE KEY-----";        
+        return desc->first_line == "-----BEGIN RSA PRIVATE KEY-----"
+            || desc->first_line == "-----BEGIN PRIVATE KEY-----";        
     }
 };
 
-struct is_rsa_private_key : std::unary_function<descriptor_p, bool> {
-    bool operator() (descriptor_p desc) {
-        return desc->first_line == "-----BEGIN RSA PRIVATE KEY-----";        
-    }
-};
+// struct is_rsa_private_key : std::unary_function<descriptor_p, bool> {
+//     bool operator() (descriptor_p desc) {
+//         return desc->first_line == "-----BEGIN RSA PRIVATE KEY-----";        
+//     }
+// };
 
 struct to_attributes : std::unary_function<const fs::directory_entry&, Objects::value_type> {
     
@@ -117,13 +117,12 @@ struct to_attributes : std::unary_function<const fs::directory_entry&, Objects::
 //             attrs[CKA_LABEL] = attribute_t(CKA_LABEL, "SSH " + attrs[CKA_LABEL].to_string());
 //             attrs[AttrSshPublic] = attribute_t(AttrSshPublic, bool_true);
         }
-        else if (is_rsa_private_key()(desc)) {
-            st_logf("      - LOADING PRIVATE [%s]\n", desc->item.filename.c_str());      
-            rsa_private_key_t o = rsa_private_key_t();
-            attrs = o(desc, attrs);
-        }
-        else if (is_rsa_private_key()(desc)) {
-            rsa_private_key_t o = rsa_private_key_t();
+//         else if (is_rsa_private_key()(desc)) {
+//             rsa_private_key_t o = rsa_private_key_t();
+//             attrs = o(desc, attrs);
+//         }
+        else if (is_private_key()(desc)) {
+            private_key_t o = private_key_t();
             attrs = o(desc, attrs);
         }
         else {
@@ -176,7 +175,7 @@ private:
     const Attributes attrs;
 };
 
-typedef std::function<bool(const Objects::value_type&)> ObjectsPred;
+
 
 struct not1 : std::unary_function<const Objects::value_type&, bool> {
     
@@ -288,6 +287,9 @@ soft_token_t::soft_token_t(const std::string& rcfile)
     }
     
     st_logf("Config file: %s\n", rcfile.c_str());
+    
+    login(std::string());
+    p_->storage.reset();
 }
 
 bool soft_token_t::ssh_agent() const
@@ -358,7 +360,7 @@ Handles soft_token_t::handles() const
     );
 }
 
-handle_iterator_t soft_token_t::handles_iterator()
+ObjectsIterator soft_token_t::begin()
 {
     try {
       check_storage();
@@ -366,22 +368,24 @@ handle_iterator_t soft_token_t::handles_iterator()
     catch(...) {
       
     }
-    const auto objects = p_->objects | transformed(boost::bind(&Objects::value_type::first,_1));
-    
-    auto it = boost::begin(objects);
-    auto end = boost::end(objects);
-    
-    return handle_iterator_t([it, end] () mutable {
-        if (it != end) {
-            return *(it++);
-        }
-        else {
-            soft_token_t::handle_invalid();
-        }
-    });
+//     const auto objects = p_->objects | transformed(boost::bind(&Objects::value_type::first,_1));
+//     
+//     auto it = boost::begin(objects);
+//     auto end = boost::end(objects);
+//     
+//     return handle_iterator_t([it, end] () mutable {
+//         if (it != end) {
+//             return *(it++);
+//         }
+//         else {
+//             return soft_token_t::handle_invalid();
+//         }
+//     });
+
+    return p_->filter_iterator([](const Objects::value_type&){return true;});
 }
 
-handle_iterator_t soft_token_t::find_handles_iterator(Attributes attrs)
+ObjectsIterator soft_token_t::begin(Attributes attrs)
 {
     try {
       check_storage();
@@ -390,20 +394,28 @@ handle_iterator_t soft_token_t::find_handles_iterator(Attributes attrs)
       
     }
     
-    const auto objects = p_->objects | filtered(by_attrs(attrs)) | transformed(boost::bind(&Objects::value_type::first,_1));
-    
-    auto it = boost::begin(objects);
-    auto end = boost::end(objects);
-    
-    return handle_iterator_t([it, end] () mutable {
-        if (it != end) {
-            return *(it++);
-        }
-        else {
-            return soft_token_t::handle_invalid();
-        }
-    });
+//     const auto objects = p_->objects | filtered(by_attrs(attrs)) | transformed(boost::bind(&Objects::value_type::first,_1));
+//     
+//     auto it = boost::begin(objects);
+//     auto end = boost::end(objects);
+//     
+//     return handle_iterator_t([it, end] () mutable {
+//         if (it != end) {
+//             return *(it++);
+//         }
+//         else {
+//             return soft_token_t::handle_invalid();
+//         }
+//     });
+
+    return p_->filter_iterator(attrs);
 }
+
+ObjectsIterator soft_token_t::end()
+{
+    return p_->filter_end();
+}
+
 
 CK_OBJECT_HANDLE soft_token_t::handle_invalid()
 {
@@ -631,9 +643,9 @@ void soft_token_t::check_storage()
     
     if (!p_->storage) {
       
-        if (p_->pin.empty()) {
-            throw pkcs11_exception_t(CKR_USER_NOT_LOGGED_IN, "no pin provided");
-        }
+//         if (p_->pin.empty()) {
+//             throw pkcs11_exception_t(CKR_USER_NOT_LOGGED_IN, "no pin provided");
+//         }
 
         st_logf("creating storage...\n");
         p_->storage = storage_t::create(p_->config, p_->pin);

@@ -30,9 +30,9 @@ struct private_key_t: public data_object_t {
     Attributes operator()(descriptor_p desc, const Attributes& attributes) const;
 };
 
-struct rsa_private_key_t: public private_key_t {
-    Attributes operator()(descriptor_p desc, const Attributes& attributes) const;
-};
+// struct rsa_private_key_t: public private_key_t {
+//     Attributes operator()(descriptor_p desc, const Attributes& attributes) const;
+// };
 
 
 struct secrete_key_t: public data_object_t {

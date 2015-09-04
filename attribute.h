@@ -73,9 +73,6 @@ struct attribute_t {
     }
     
     inline bool to_bool() const {
-        if (attr_.ulValueLen != sizeof(CK_BBOOL)) {
-            throw std::runtime_error("can't cast to CK_BBOOL: invalid value length");
-        }
         return attr_.pValue && *(reinterpret_cast<CK_BBOOL*>(attr_.pValue)) == CK_TRUE;
     }
     
