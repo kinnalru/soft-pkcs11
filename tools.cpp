@@ -19,6 +19,7 @@
 #include <openssl/bn.h>
 
 #include "tools.h"
+#include "log.h"
 #include "exceptions.h"
 
 int log_fd = 0;
@@ -26,18 +27,23 @@ int log_fd = 0;
 
 void st_logf(const char* fmt, ...)
 {
+    va_list ap;
+    va_start(ap, fmt);
+//     vdprintf(STDOUT_FILENO, fmt, ap);
+    st_logf(fmt, ap);    
+    va_end(ap); 
+
+}
+
+void st_logf(const char* fmt, va_list args)
+{
     if (log_fd == 0) {
         log_fd = ::open("/tmp/soft-token.log", O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
     }
     
-    va_list ap;
-    va_start(ap, fmt);
-//     vdprintf(STDOUT_FILENO, fmt, ap);
-    vdprintf(log_fd, fmt, ap);    
-    va_end(ap); 
-    
-//     fsync(log_fd);
+    vdprintf(log_fd, fmt, args);    
 }
+
 
 void print_attributes(const CK_ATTRIBUTE *attributes, CK_ULONG num_attributes)
 {
@@ -52,65 +58,65 @@ void print_attributes(const Attributes& attributes)
 {
     CK_ULONG i;
 
-    st_logf("Print attributes: %lu\n", attributes.size());
+    LOG_G("Print attributes: %lu", attributes.size());
 
     for (auto it = attributes.begin(); it != attributes.end(); ++it) {
         const attribute_t& attr = it->second;
         
         switch (it->first) {
         case CKA_TOKEN: {
-            st_logf("  A type: <CKA_TOKEN> size: <%d> value: <%s>\n", attr->ulValueLen, (attr.to_bool()) ? "TRUE" : "FALSE");
+            LOG("  A type: <CKA_TOKEN> size: <%d> value: <%s>", attr->ulValueLen, (attr.to_bool()) ? "TRUE" : "FALSE");
             break;
         }
         case CKA_KEY_TYPE: {
-            st_logf("  A type: <CKA_KEY_TYPE> size: <%d> value: <%lu>\n", attr->ulValueLen, attr.to_value<CK_KEY_TYPE>());
+            LOG("  A type: <CKA_KEY_TYPE> size: <%d> value: <%lu>", attr->ulValueLen, attr.to_value<CK_KEY_TYPE>());
             break;
         }
         case CKA_CLASS: {
             CK_OBJECT_CLASS klass = attr.to_class();
             switch (klass) {
             case CKO_CERTIFICATE:
-                st_logf("  A type: <CKA_CLASS> size: <%d> value: <%s>\n", attr->ulValueLen, "certificate");
+                LOG("  A type: <CKA_CLASS> size: <%d> value: <%s>", attr->ulValueLen, "certificate");
                 break;
             case CKO_PUBLIC_KEY:
-                st_logf("  A type: <CKA_CLASS> size: <%d> value: <%s>\n", attr->ulValueLen, "public key");
+                LOG("  A type: <CKA_CLASS> size: <%d> value: <%s>", attr->ulValueLen, "public key");
                 break;
             case CKO_PRIVATE_KEY:
-                st_logf("  A type: <CKA_CLASS> size: <%d> value: <%s>\n", attr->ulValueLen, "private key");
+                LOG("  A type: <CKA_CLASS> size: <%d> value: <%s>", attr->ulValueLen, "private key");
                 break;
             case CKO_SECRET_KEY:
-                st_logf("  A type: <CKA_CLASS> size: <%d> value: <%s>\n", attr->ulValueLen, "secret key");
+                LOG("  A type: <CKA_CLASS> size: <%d> value: <%s>", attr->ulValueLen, "secret key");
                 break;
             case CKO_DOMAIN_PARAMETERS:
-                st_logf("  A type: <CKA_CLASS> size: <%d> value: <%s>\n", attr->ulValueLen, "domain parameters");
+                LOG("  A type: <CKA_CLASS> size: <%d> value: <%s>", attr->ulValueLen, "domain parameters");
                 break;
             default:
-                st_logf("  A type: <CKA_CLASS> size: <%d> value: [class 0x%08lx]\n", attr->ulValueLen, klass);
+                LOG("  A type: <CKA_CLASS> size: <%d> value: [class 0x%08lx]", attr->ulValueLen, klass);
                 break;
             }
             break;
         }
         case CKA_PRIVATE:
-            st_logf("  A type: <CKA_PRIVATE> size: <%d>\n", attr->ulValueLen);
+            LOG("  A type: <CKA_PRIVATE> size: <%d>", attr->ulValueLen);
             break;
         case CKA_LABEL:
-            st_logf("  A type: <CKA_LABEL> size: <%d>       value: <%s>\n", attr->ulValueLen, attr.to_string().c_str());
+            LOG("  A type: <CKA_LABEL> size: <%d>       value: <%s>", attr->ulValueLen, attr.to_string().c_str());
             break;
         case CKA_APPLICATION:
-            st_logf("  A type: <CKA_APPLICATION> size: <%d> value: <%s>\n", attr->ulValueLen, attr.to_string().c_str());
+            LOG("  A type: <CKA_APPLICATION> size: <%d> value: <%s>", attr->ulValueLen, attr.to_string().c_str());
             break;
         case CKA_VALUE:
-            st_logf("  A type: <CKA_VALUE> size: <%d>\n", attr->ulValueLen);
+            LOG("  A type: <CKA_VALUE> size: <%d>", attr->ulValueLen);
             break;
         case CKA_ID:
-            st_logf("  A type: <CKA_ID> size: <%d> value: <%lu>\n", attr->ulValueLen, attr.to_id());
+            LOG("  A type: <CKA_ID> size: <%d> value: <%lu>", attr->ulValueLen, attr.to_id());
             break;
         case CKA_OBJECT_ID:
-            st_logf("  A type: <CKA_OBJECT_ID> size: <%d> value: <%s>\n", attr->ulValueLen, attr.to_object_id().c_str());
+            LOG("  A type: <CKA_OBJECT_ID> size: <%d> value: <%s>", attr->ulValueLen, attr.to_object_id().c_str());
 
             break;
         default:
-            st_logf("  A type: <UNKNOWN> size: <%d> type: [0x%08lx]\n", attr->ulValueLen, attr->type);
+            LOG("  A type: <UNKNOWN> size: <%d> type: [0x%08lx]", attr->ulValueLen, attr->type);
             break;
         }
     }
@@ -177,13 +183,31 @@ void set_stdin_echo(bool enable)
 
 std::string read_password()
 {
-    std::cout << "Input PIN:" << std::endl;
+    std::cout << "Please enter PIN to login to SoftToken:" << std::endl;
     set_stdin_echo(false);
     std::string pass;
     std::cin >> pass;
     set_stdin_echo(true);
     return pass;
 }
+
+std::string ask_password()
+{
+    if (isatty(fileno(stdin))) {
+        return read_password();
+    }
+    else {
+        try {
+            const auto data = piped("if which kdialog &> /dev/null; then kdialog --password 'Please enter PIN' --title 'Logging to SoftToken'; elif which x11-ssh-askpass &> /dev/null; then x11-ssh-askpass 'Please enter PIN to login to SoftToken'; else  exit 1; fi");
+            return std::string(data.begin(), data.end());
+        }
+        catch(...) {
+        }
+    }
+    
+    return std::string();
+}
+
 
 
 std::vector<char> piped(const std::string& cmd, const std::vector<char>& input) {

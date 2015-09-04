@@ -1,4 +1,7 @@
 
+#ifndef ST_OBJECT_H
+#define ST_OBJECT_H
+
 #include "types.h"
 
 
@@ -40,6 +43,6 @@ struct secrete_key_t: public data_object_t {
 };
 
 
-
+#endif
 
 

@@ -24,6 +24,7 @@
 #include "tools.h"
 #include "soft_token.h"
 #include "exceptions.h"
+#include "log.h"
 
 
 std::auto_ptr<soft_token_t> soft_token;
@@ -95,8 +96,7 @@ extern "C" {
 CK_RV C_Initialize(CK_VOID_PTR a)
 {
     CK_C_INITIALIZE_ARGS_PTR args = reinterpret_cast<CK_C_INITIALIZE_ARGS_PTR>(a);
-    st_logf(" ** C_Initialize\n");
-
+    LOG_G("%s",__FUNCTION__);
     
     std::string rcfile;
     try {
@@ -120,7 +120,8 @@ CK_RV C_Initialize(CK_VOID_PTR a)
 
 CK_RV C_Finalize(CK_VOID_PTR args)
 {
-    st_logf(" ** C_Finalize\n");
+    LOG_G("%s",__FUNCTION__);
+    
     session_t::clear();
     soft_token.reset();
 
@@ -141,7 +142,7 @@ static void snprintf_fill(char *str, size_t size, char fillchar, const char *fmt
 
 CK_RV C_GetInfo(CK_INFO_PTR args)
 {
-    st_logf(" ** C_GetInfo\n");
+    LOG_G("%s",__FUNCTION__);
     
     if (!soft_token.get()) {
         return CKR_CRYPTOKI_NOT_INITIALIZED;
@@ -165,7 +166,7 @@ CK_RV C_GetInfo(CK_INFO_PTR args)
 
 CK_RV C_GetSlotList(CK_BBOOL tokenPresent, CK_SLOT_ID_PTR pSlotList, CK_ULONG_PTR   pulCount)
 {
-    st_logf(" ** C_GetSlotList\n");
+    LOG_G("%s",__FUNCTION__);
 
     if (soft_token->ready()) {
         if (pSlotList) {
@@ -183,7 +184,7 @@ CK_RV C_GetSlotList(CK_BBOOL tokenPresent, CK_SLOT_ID_PTR pSlotList, CK_ULONG_PT
 
 CK_RV C_GetSlotInfo(CK_SLOT_ID slotID, CK_SLOT_INFO_PTR pInfo)
 {
-    st_logf(" ** C_GetSlotInfo\n");
+    LOG_G("%s",__FUNCTION__);
 
     memset(pInfo, 18, sizeof(*pInfo));
 
@@ -211,7 +212,7 @@ CK_RV C_GetSlotInfo(CK_SLOT_ID slotID, CK_SLOT_INFO_PTR pInfo)
 
 CK_RV C_GetTokenInfo(CK_SLOT_ID slotID, CK_TOKEN_INFO_PTR pInfo)
 {
-    st_logf(" ** C_GetTokenInfo\n"); 
+    LOG_G("%s",__FUNCTION__);
     
     if (!soft_token->ready()) {
         return CKR_TOKEN_NOT_PRESENT;
@@ -235,8 +236,8 @@ CK_RV C_GetTokenInfo(CK_SLOT_ID slotID, CK_TOKEN_INFO_PTR pInfo)
       sizeof(pInfo->serialNumber),
       ' ',
       "391137");
-    pInfo->flags = CKF_TOKEN_INITIALIZED | CKF_USER_PIN_INITIALIZED;
-    pInfo->flags |= CKF_LOGIN_REQUIRED;
+    pInfo->flags = CKF_TOKEN_INITIALIZED | CKF_USER_PIN_INITIALIZED | CKF_PROTECTED_AUTHENTICATION_PATH | CKF_LOGIN_REQUIRED;
+//     pInfo->flags |= CKF_LOGIN_REQUIRED;
     
 //     if (!soft_token->logged() && std::getenv("SOFTPKCS11_FORCE_PIN")) {
 //         CKF_PROTECTED_AUTHENTICATION_PATH
@@ -266,7 +267,7 @@ CK_RV C_GetTokenInfo(CK_SLOT_ID slotID, CK_TOKEN_INFO_PTR pInfo)
 
 CK_RV C_GetMechanismList(CK_SLOT_ID slotID, CK_MECHANISM_TYPE_PTR pMechanismList, CK_ULONG_PTR pulCount)
 {
-    st_logf(" ** C_GetMechanismList\n");
+    LOG_G("%s",__FUNCTION__);
 
     if (!soft_token->ready()) {
         return CKR_TOKEN_NOT_PRESENT;
@@ -283,7 +284,7 @@ CK_RV C_GetMechanismList(CK_SLOT_ID slotID, CK_MECHANISM_TYPE_PTR pMechanismList
 
 CK_RV C_GetMechanismInfo(CK_SLOT_ID slotID, CK_MECHANISM_TYPE type, CK_MECHANISM_INFO_PTR pInfo)
 {
-    st_logf(" ** C_GetMechanismInfo: slot %d type: %d\n", (int)slotID, (int)type);
+    LOG_G("%s slot:%d type:%d", __FUNCTION__, slotID, type);
     return CKR_FUNCTION_NOT_SUPPORTED;
 }
 
@@ -292,7 +293,7 @@ CK_RV C_InitToken(CK_SLOT_ID slotID,
         CK_ULONG ulPinLen,
         CK_UTF8CHAR_PTR pLabel)
 {
-    st_logf(" ** C_InitToken: slot %d\n", (int)slotID);
+    LOG_G("%s slot:%d", __FUNCTION__, slotID);
     return CKR_FUNCTION_NOT_SUPPORTED;
 }
 
@@ -302,9 +303,9 @@ CK_RV C_OpenSession(CK_SLOT_ID slotID,
           CK_NOTIFY Notify,
           CK_SESSION_HANDLE_PTR phSession)
 {
+    LOG_G("%s slot:%d", __FUNCTION__, slotID);
     int i;
 
-    st_logf(" ** C_OpenSession: slot: %d\n", (int)slotID);
     
     if (!soft_token->ready()) {
         return CKR_TOKEN_NOT_PRESENT;
@@ -318,7 +319,7 @@ CK_RV C_OpenSession(CK_SLOT_ID slotID,
 
 CK_RV C_CloseSession(CK_SESSION_HANDLE hSession)
 {
-    st_logf(" ** C_CloseSession\n");
+    LOG_G("%s session:%d", __FUNCTION__, hSession);
     
     session_t::destroy(hSession);
     return CKR_OK;
@@ -326,7 +327,7 @@ CK_RV C_CloseSession(CK_SESSION_HANDLE hSession)
 
 CK_RV C_GetSessionInfo(CK_SESSION_HANDLE hSession, CK_SESSION_INFO_PTR pInfo)
 {
-    st_logf(" ** C_GetSessionInfo\n");
+    LOG_G("%s session:%d", __FUNCTION__, hSession);
     
     if (!soft_token->ready()) {
         return CKR_DEVICE_REMOVED;
@@ -364,7 +365,7 @@ const std::set<CK_ATTRIBUTE_TYPE> public_attributes = {
 
 CK_RV C_FindObjectsInit(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, CK_ULONG ulCount)
 {
-    st_logf(" ** C_FindObjectsInit: Session: %d ulCount: %d\n", hSession, ulCount);
+    LOG_G("%s session:%d ulCount%d", __FUNCTION__, hSession, ulCount);
 
     if (!soft_token->ready()) {
         return CKR_DEVICE_REMOVED;
@@ -375,7 +376,11 @@ CK_RV C_FindObjectsInit(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, 
         return CKR_SESSION_HANDLE_INVALID;
     }
     
-
+    if (!soft_token->logged()) {
+        if (!soft_token->login(ask_password())) {
+            return CKR_USER_NOT_LOGGED_IN;
+        }
+    }
     
     if (ulCount) {
         
@@ -385,22 +390,12 @@ CK_RV C_FindObjectsInit(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, 
         
         for (CK_ULONG i = 0; i < ulCount; i++) {
             attrs[pTemplate[i].type] = pTemplate[i];
-            
-            if (public_attributes.find(pTemplate[i].type) == public_attributes.end()) {
-                if (!soft_token->logged()) {
-                    if (!soft_token->ssh_agent()) {
-                        return CKR_USER_NOT_LOGGED_IN;
-                    }
-                }              
-            }
         }
 
-
-
         session->objects_iterator = soft_token->begin(attrs);
-        st_logf(" == find initialized\n");
+        LOG("Find initialized");
     } else {
-        st_logf(" == find all objects\n");
+        LOG("Find ALL initialized");
         session->objects_iterator = soft_token->begin();
     }
 
@@ -412,7 +407,7 @@ CK_RV C_FindObjects(CK_SESSION_HANDLE hSession,
           CK_ULONG ulMaxObjectCount,
           CK_ULONG_PTR pulObjectCount)
 {
-    st_logf(" ** C_FindObjects Session: %d ulMaxObjectCount: %d\n", hSession, ulMaxObjectCount);
+    LOG_G("%s session:%d ulMaxObjectCount%d", __FUNCTION__, hSession, ulMaxObjectCount);
 
     if (!soft_token->ready()) {
         return CKR_DEVICE_REMOVED;
@@ -433,7 +428,7 @@ CK_RV C_FindObjects(CK_SESSION_HANDLE hSession,
         auto& it = session->objects_iterator;
         
         while(it != soft_token->end()) {
-            st_logf("found id %lu\n", it->first);
+            LOG("Found id %lu", it->first);
             
             *phObject++ = it->first;
             (*pulObjectCount)++;
@@ -444,21 +439,18 @@ CK_RV C_FindObjects(CK_SESSION_HANDLE hSession,
         }
     }
     catch(const std::exception& e) {
-        st_logf("Error:  %s\n", e.what());
+        LOG("Error %s", e.what());
     }
     
-    st_logf("  == pulObjectCount: %lu\n", *pulObjectCount);
+    LOG("Return %lu objects", *pulObjectCount);
     return CKR_OK;
 }
 
 CK_RV C_FindObjectsFinal(CK_SESSION_HANDLE hSession)
 {
-    st_logf(" ** C_FindObjectsFinal\n");
+    LOG_G("%s session:%d", __FUNCTION__, hSession);
     return CKR_OK;
 }
-
-
-
 
 CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, CK_ATTRIBUTE_PTR pTemplate, CK_ULONG ulCount)
 {
@@ -468,7 +460,7 @@ CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, 
     CK_RV ret;
     int j;
 
-    st_logf("** C_GetAttributeValue: %lu %s ulCount: %d\n", hObject, soft_token->attributes(hObject)[CKA_LABEL].to_string().c_str(), ulCount);
+    LOG_G("%s session:%d handle:%lu %s ulCount:%d", __FUNCTION__, hSession, hObject, soft_token->attributes(hObject)[CKA_LABEL].to_string().c_str(), ulCount);
     
     if (!soft_token->ready()) {
         return CKR_DEVICE_REMOVED;
@@ -480,9 +472,10 @@ CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, 
         return CKR_SESSION_HANDLE_INVALID;
     }
     
-   
-    st_logf(" input \n");
-    print_attributes(pTemplate, ulCount);
+    {
+        LOG_G("Input");
+        print_attributes(pTemplate, ulCount);
+    }
 
     auto attrs = soft_token->attributes(hObject);
     
@@ -511,11 +504,11 @@ CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, 
                 pTemplate[i].ulValueLen = data.size();
             }
             catch(const pkcs11_exception_t& e) {
-                st_logf("read exception: %s\n", e.what());
+                LOG_G("PKCS11 Error: %s", e.what());
                 return e.rv;
             }
             catch(const std::exception& e) {
-                st_logf("read exception: %s\n", e.what());
+                LOG_G("Error: %s", e.what());
                 return CKR_DEVICE_REMOVED;
             }
             
@@ -525,14 +518,16 @@ CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, 
         }
     }
     
-    st_logf(" output \n");
-    print_attributes(pTemplate, ulCount);
+    {
+        LOG_G("Output");
+        print_attributes(pTemplate, ulCount);
+    }
     return CKR_OK;
 }
 
 CK_RV C_Login(CK_SESSION_HANDLE hSession, CK_USER_TYPE userType, CK_UTF8CHAR_PTR pPin, CK_ULONG ulPinLen)
 {
-    st_logf(" ** C_Login\n");
+    LOG_G("%s session:%d", __FUNCTION__, hSession);
     
     if (!soft_token->ready()) {
         return CKR_DEVICE_REMOVED;
@@ -544,27 +539,21 @@ CK_RV C_Login(CK_SESSION_HANDLE hSession, CK_USER_TYPE userType, CK_UTF8CHAR_PTR
     }
     
     if (soft_token->logged()) {
-//         if (std::getenv("SOFTPKCS11_FORCE_PIN")) {
-//             return CKR_OK;
-//         }
         return CKR_USER_ALREADY_LOGGED_IN;
     }  
-    st_logf(" NOT\n");
 
     if (soft_token->login(std::string(reinterpret_cast<char*>(pPin), ulPinLen))) {
-        st_logf(" OK\n");
         return CKR_OK;    
     }
     else {
         if (soft_token->ssh_agent()) return CKR_OK;
-        st_logf(" ERR\n");
         return CKR_PIN_INCORRECT;  
     }
 }
 
 CK_RV C_Logout(CK_SESSION_HANDLE hSession)
 {
-    st_logf(" ** C_Logout\n");
+    LOG_G("%s session:%d", __FUNCTION__, hSession);
     
     auto session = session_t::find(hSession);
     if (session == session_t::end()) {
@@ -578,7 +567,7 @@ CK_RV C_Logout(CK_SESSION_HANDLE hSession)
 
 CK_RV C_SignInit(CK_SESSION_HANDLE hSession, CK_MECHANISM_PTR pMechanism, CK_OBJECT_HANDLE hKey)
 {
-    st_logf(" ** C_SignInit\n");
+    LOG_G("%s session:%d", __FUNCTION__, hSession);
 
     if (!soft_token->ready()) {
         return CKR_DEVICE_REMOVED;
@@ -590,7 +579,9 @@ CK_RV C_SignInit(CK_SESSION_HANDLE hSession, CK_MECHANISM_PTR pMechanism, CK_OBJ
     }
     
     if (!soft_token->logged()) {
-        return CKR_USER_NOT_LOGGED_IN;
+        if (!soft_token->login(ask_password())) {
+            return CKR_USER_NOT_LOGGED_IN;
+        }
     }  
     
     if (!soft_token->has_key(hKey)) {
@@ -619,7 +610,7 @@ CK_RV C_Sign(CK_SESSION_HANDLE hSession,
        CK_BYTE_PTR pSignature,
        CK_ULONG_PTR pulSignatureLen)
 {
-    st_logf(" ** C_Sign\n");
+    LOG_G("%s session:%d", __FUNCTION__, hSession);
     
     if (!soft_token->ready()) {
         return CKR_DEVICE_REMOVED;
@@ -631,7 +622,9 @@ CK_RV C_Sign(CK_SESSION_HANDLE hSession,
     }
     
     if (!soft_token->logged()) {
-        return CKR_USER_NOT_LOGGED_IN;
+        if (!soft_token->login(ask_password())) {
+            return CKR_USER_NOT_LOGGED_IN;
+        }
     }  
 
     if (session->sign_key == soft_token_t::handle_invalid()) {
@@ -667,7 +660,7 @@ CK_RV C_Sign(CK_SESSION_HANDLE hSession,
 
 CK_RV C_SignUpdate(CK_SESSION_HANDLE hSession, CK_BYTE_PTR pPart, CK_ULONG ulPartLen)
 {
-    st_logf("C_SignUpdate\n");
+    LOG_G("%s session:%d", __FUNCTION__, hSession);
 
     if (!soft_token->ready()) {
         return CKR_DEVICE_REMOVED;
@@ -683,7 +676,7 @@ CK_RV C_SignUpdate(CK_SESSION_HANDLE hSession, CK_BYTE_PTR pPart, CK_ULONG ulPar
 
 CK_RV C_SignFinal(CK_SESSION_HANDLE hSession, CK_BYTE_PTR pSignature, CK_ULONG_PTR pulSignatureLen)
 {
-    st_logf("C_SignFinal\n");
+    LOG_G("%s session:%d", __FUNCTION__, hSession);
 
     auto session = session_t::find(hSession);
     if (session == session_t::end()) {
@@ -703,7 +696,7 @@ CK_RV C_SignFinal(CK_SESSION_HANDLE hSession, CK_BYTE_PTR pSignature, CK_ULONG_P
 
 CK_RV C_CreateObject(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, CK_ULONG ulCount, CK_OBJECT_HANDLE_PTR phObject)
 {
-    st_logf("C_CreateObject\n");
+    LOG_G("%s session:%d", __FUNCTION__, hSession);
     
     if (!soft_token->ready()) {
         return CKR_DEVICE_REMOVED;
@@ -715,7 +708,9 @@ CK_RV C_CreateObject(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, CK_
     }
     
     if (!soft_token->logged()) {
-        return CKR_USER_NOT_LOGGED_IN;
+        if (!soft_token->login(ask_password())) {
+            return CKR_USER_NOT_LOGGED_IN;
+        }
     } 
     
     CK_OBJECT_HANDLE id = soft_token_t::handle_invalid();
@@ -763,19 +758,18 @@ CK_RV C_CreateObject(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, CK_
       id = soft_token->write(label, value, attrs);
     }
     catch(const pkcs11_exception_t& e) {
-        st_logf("write error: %s\n", e.what());
+        LOG("PKCS11 Error: %s", e.what());
         return e.rv;
     }
     catch(const std::exception& e) {
-        st_logf("write error: %s\n", e.what());
-//         if (soft_token->ssh_agent()) return CKR_OPERATION_NOT_INITIALIZED;
+        LOG("Error: %s", e.what());
         return CKR_FUNCTION_FAILED;
     }
 
     
     if (id != soft_token_t::handle_invalid()) {
         *phObject = id;
-        st_logf("object created %lu\n", id);
+        LOG_G("Object dreated: %lu", id);
         print_attributes(soft_token->attributes(id));
         return CKR_OK;
     }
@@ -792,7 +786,7 @@ extern CK_FUNCTION_LIST funcs;
 
 CK_RV C_GetFunctionList(CK_FUNCTION_LIST_PTR_PTR ppFunctionList)
 {
-    st_logf("C_GetFunctionList\n");
+    LOG_G("%s",__FUNCTION__);
     *ppFunctionList = &funcs;
     return CKR_OK;
 }

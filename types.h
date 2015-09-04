@@ -1,4 +1,7 @@
 
+#ifndef ST_TYPES_H
+#define ST_TYPES_H
+
 #include <string>
 #include <memory>
 #include <vector>
@@ -19,3 +22,4 @@ typedef std::map<CK_OBJECT_HANDLE, Attributes> Objects;
 struct descriptor_t;
 typedef std::shared_ptr<descriptor_t> descriptor_p;
 
+#endif

@@ -8,6 +8,7 @@
 #include "attribute.h"
 
 void st_logf(const char *fmt, ...);
+void st_logf(const char *fmt, va_list args);
 
 void print_attributes(const CK_ATTRIBUTE *attributes, CK_ULONG num_attributes);
 void print_attributes(const Attributes& attributes); 
@@ -27,6 +28,8 @@ std::shared_ptr<FILE> write_mem(char **buf, size_t *size);
 
 
 std::string read_password();
+
+std::string ask_password();
 
 std::vector<char> piped(const std::string& cmd, const std::vector<char>& input = std::vector<char>());
 

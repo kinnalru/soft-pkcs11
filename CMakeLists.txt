@@ -29,6 +29,7 @@ set(HEADERS
     soft_token.h
     storage.h
     tools.h
+    log.h
     attribute.h
 )
 
@@ -38,6 +39,7 @@ set(SOURCES
     storage.cpp
     soft_token.cpp
     object.cpp
+    log.cpp
     attribute.cpp
 )
 

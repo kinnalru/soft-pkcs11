@@ -28,6 +28,7 @@
 #include "soft_token.h"
 #include "exceptions.h"
 #include "object.h"
+#include "log.h"
 
 enum Attribute : CK_ATTRIBUTE_TYPE {
     AttrFilename = CKA_VENDOR_DEFINED + 1,
@@ -145,29 +146,29 @@ struct by_attrs : std::unary_function<const Objects::value_type&, bool> {
         
         CK_OBJECT_HANDLE h = object_pair.second.at(CKA_OBJECT_ID).to_handle();
         
-        st_logf("    * SCAN object: %s [%lu] [%lu]\n", object_pair.second.at(CKA_LABEL).to_string().c_str(), object_pair.first, h);
+        LOG("    * SCAN object: %s [%lu] [%lu]\n", object_pair.second.at(CKA_LABEL).to_string().c_str(), object_pair.first, h);
         
         for (auto it = attrs.begin(); it != attrs.end(); ++it) {
             const Attributes& object_attrs = object_pair.second;
             
-            st_logf("      - compare attr type:: [0x%08lx]\n", it->first);        
+            LOG("      - compare attr type:: [0x%08lx]\n", it->first);        
             
             auto fnd = object_attrs.find(it->first);
             if (fnd != object_attrs.end()) {
                 if (fnd->second != it->second) {
-                    st_logf("        - attr type [0x%08lx] NOT equal %lu -- %lu\n", it->first, *((CK_ULONG*)it->second->pValue), *((CK_ULONG*)fnd->second->pValue));
+                    LOG("        - attr type [0x%08lx] NOT equal %lu -- %lu\n", it->first, *((CK_ULONG*)it->second->pValue), *((CK_ULONG*)fnd->second->pValue));
                     return false;
                 } else {
-                    st_logf("        - attr type [0x%08lx] EQUAL %lu -- %lu\n", it->first, it->second.to_handle(), fnd->second.to_handle());
+                    LOG("        - attr type [0x%08lx] EQUAL %lu -- %lu\n", it->first, it->second.to_handle(), fnd->second.to_handle());
                 }
             }
             else {
-                st_logf("        - attr type [0x%08lx] NOT FOUND\n", it->first);
+                LOG("        - attr type [0x%08lx] NOT FOUND\n", it->first);
                 return false;
             }
         }
         
-        st_logf("    * object MATCH\n");
+        LOG("    * object MATCH\n");
         return true;
     };
     
@@ -282,14 +283,11 @@ soft_token_t::soft_token_t(const std::string& rcfile)
         boost::property_tree::ini_parser::read_ini(rcfile, p_->config);
     }
     catch (const std::exception& e) {
-        st_logf("Error reading config file %s: %s\n", rcfile.c_str(), e.what());
+        LOG("Error reading config file %s: %s\n", rcfile.c_str(), e.what());
         exit(-1);
     }
     
-    st_logf("Config file: %s\n", rcfile.c_str());
-    
-    login(std::string());
-    p_->storage.reset();
+    LOG("Config file: %s\n", rcfile.c_str());
 }
 
 bool soft_token_t::ssh_agent() const
@@ -324,16 +322,16 @@ bool soft_token_t::logged() const
 bool soft_token_t::login(const std::string& pin)
 {
     try {
-        st_logf(" log 1\n");
+        LOG(" log 1\n");
         p_->pin = pin;
-        st_logf(" log 2\n");
+        LOG(" log 2\n");
         check_storage();
-        st_logf(" log 3\n");
+        LOG(" log 3\n");
         reset();
-        st_logf(" log 4\n");
+        LOG(" log 4\n");
     }
     catch(const std::exception& e) {
-        st_logf("Exception: %s\n", e.what());
+        LOG("Exception: %s\n", e.what());
         return false;
     }
     
@@ -528,7 +526,7 @@ std::vector<unsigned char> soft_token_t::sign(CK_OBJECT_HANDLE id, CK_MECHANISM_
         
         if (pData == NULL_PTR) {
             throw std::runtime_error("err");
-//             st_logf("data NULL\n");
+//             LOG("data NULL\n");
 //             ret = CKR_ARGUMENTS_BAD;
 //             goto out;
         }
@@ -537,7 +535,7 @@ std::vector<unsigned char> soft_token_t::sign(CK_OBJECT_HANDLE id, CK_MECHANISM_
         auto len = RSA_private_encrypt(ulDataLen, pData, buffer.data(), pkey->pkey.rsa, padding);
         
         
-        st_logf("private encrypt done\n");
+        LOG("private encrypt done\n");
         if (len <= 0) {
             throw std::runtime_error("err");
 //             ret = CKR_DEVICE_ERROR;
@@ -607,16 +605,16 @@ std::vector<unsigned char> soft_token_t::create_key(CK_OBJECT_CLASS klass, const
         
         if (klass == CKO_PUBLIC_KEY) {
             if (PEM_write_PUBKEY(file.get(), pRsaKey.get()) != 1) {
-                st_logf("PEM_write_PUBKEY error\n");
+                LOG("PEM_write_PUBKEY error\n");
                 throw std::runtime_error("Can't create rsa key from modulus");
             }
-            st_logf("PEM_write_PUBKEY OK\n");
+            LOG("PEM_write_PUBKEY OK\n");
         } else if (klass == CKO_PRIVATE_KEY) {
             if (PEM_write_PrivateKey(file.get(), pRsaKey.get(), NULL, 0, 0, NULL, NULL) != 1) {
-                st_logf("PEM_write_PrivateKey error\n");
+                LOG("PEM_write_PrivateKey error\n");
                 throw std::runtime_error("Can't create rsa key from modulus");
             }
-            st_logf("PEM_write_PrivateKey OK\n");
+            LOG("PEM_write_PrivateKey OK\n");
         }
     } catch(...) {
     }
@@ -631,7 +629,7 @@ void soft_token_t::check_storage()
 {
     if (p_->storage && p_->storage->present()) {
         p_->storage->set_pin(p_->pin);
-        st_logf("storage is ok\n");
+        LOG("storage is ok\n");
         return;
     }
     
@@ -647,7 +645,7 @@ void soft_token_t::check_storage()
 //             throw pkcs11_exception_t(CKR_USER_NOT_LOGGED_IN, "no pin provided");
 //         }
 
-        st_logf("creating storage...\n");
+        LOG("creating storage...\n");
         p_->storage = storage_t::create(p_->config, p_->pin);
         reset();
     }
@@ -657,15 +655,15 @@ void soft_token_t::reset()
 {
     p_->objects.clear();
     
-    st_logf(" *  RESET cheking...\n");
+    LOG(" *  RESET cheking...\n");
     check_storage();
     
-    st_logf("    cheking...\n");
+    LOG("    cheking...\n");
     to_attributes convert(p_->objects);
     for(auto item: p_->storage->items()) {
-        st_logf("    Finded object: %s\n", item.filename.c_str());
+        LOG("    Finded object: %s\n", item.filename.c_str());
         const auto a = p_->objects.insert(convert(item)).first;
-        st_logf("           object: %lu\n", a->first);
+        LOG("           object: %lu\n", a->first);
     }
     
     const CK_OBJECT_CLASS public_key_c = CKO_PUBLIC_KEY;
@@ -687,10 +685,10 @@ void soft_token_t::reset()
         }
     }
     
-    st_logf("2\n");
+    LOG("2\n");
     
     for(auto it = p_->objects.begin(); it != p_->objects.end(); ++it ) {
-      st_logf("  *** Final obejct: %s %s - %lu\n", it->second.at(CKA_LABEL).to_string().c_str(), std::to_string(it->first).c_str(), it->second.at(CKA_ID).to_id());
+      LOG("  *** Final obejct: %s %s - %lu\n", it->second.at(CKA_LABEL).to_string().c_str(), std::to_string(it->first).c_str(), it->second.at(CKA_ID).to_id());
       print_attributes(it->second);
     }
 }
