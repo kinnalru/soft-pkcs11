@@ -26,7 +26,6 @@
 #include "exceptions.h"
 #include "log.h"
 
-
 std::auto_ptr<soft_token_t> soft_token;
 
 static void log(const std::string& str) {
@@ -41,6 +40,39 @@ struct func_t {
     }
 };
 
+template <typename Function, typename... Args>
+CK_RV handle_exceptions(Function f, Args... args) {
+    try {
+        return f(args...);
+    }
+    catch (pkcs11_exception_t& e) {
+        LOG("PKCS Error: %s", e.what());
+        return e.rv;
+    }
+    catch (std::exception& e) {
+        LOG("Error: %s", e.what());
+        return CKR_FUNCTION_FAILED;
+    }
+    catch (...) {
+        LOG("Unexpected Error");
+        return CKR_GENERAL_ERROR;
+    }
+}
+
+#define WRAP_FUNCTION(self, wrapper, ...)\
+    static bool guard = true;\
+    if (!guard) {\
+        guard = true;\
+        auto result = wrapper(self, ##__VA_ARGS__);\
+        guard = false;\
+        return result;\
+    }
+    
+#define ASSERT_PTR(ptr)\
+    if (ptr == NULL_PTR) throw pkcs11_exception_t(CKR_ARGUMENTS_BAD, "Pointer " #ptr " must present.");
+    
+#define ASSERT_NOT_PTR(ptr)\
+    if (ptr != NULL_PTR) throw pkcs11_exception_t(CKR_ARGUMENTS_BAD, "Pointer " #ptr " must present.");
 
 struct session_t {
     
@@ -91,12 +123,18 @@ std::list<session_t> session_t::_sessions = std::list<session_t>();
 
 
 
+
 extern "C" {
   
 CK_RV C_Initialize(CK_VOID_PTR a)
 {
-    CK_C_INITIALIZE_ARGS_PTR args = reinterpret_cast<CK_C_INITIALIZE_ARGS_PTR>(a);
+    WRAP_FUNCTION(C_Initialize, handle_exceptions, a);
+    
     LOG_G("%s",__FUNCTION__);
+    
+    if (CK_C_INITIALIZE_ARGS_PTR args = reinterpret_cast<CK_C_INITIALIZE_ARGS_PTR>(a)) {
+        return CKR_CANT_LOCK;
+    }
     
     std::string rcfile;
     try {
@@ -107,20 +145,19 @@ CK_RV C_Initialize(CK_VOID_PTR a)
         rcfile = home + "/.soft-token.rc";
     }
 
-    try {
-      soft_token.reset(new soft_token_t(rcfile));
-    }
-    catch(const std::exception& e) {
-        st_logf("Initializing error: %s\n", e.what());
-        return CKR_GENERAL_ERROR;
-    }
+    if (soft_token.get()) return CKR_CRYPTOKI_ALREADY_INITIALIZED;
+    
+    soft_token.reset(new soft_token_t(rcfile));
     
     return CKR_OK;
 }
 
-CK_RV C_Finalize(CK_VOID_PTR args)
+CK_RV C_Finalize(CK_VOID_PTR a)
 {
+    WRAP_FUNCTION(C_Finalize, handle_exceptions, a);
+    
     LOG_G("%s",__FUNCTION__);
+    ASSERT_NOT_PTR(a);
     
     session_t::clear();
     soft_token.reset();
@@ -140,43 +177,53 @@ static void snprintf_fill(char *str, size_t size, char fillchar, const char *fmt
   str[len++] = fillchar;
 }
 
-CK_RV C_GetInfo(CK_INFO_PTR args)
+CK_RV C_GetInfo(CK_INFO_PTR info)
 {
+    WRAP_FUNCTION(C_GetInfo, handle_exceptions, info);
+    
     LOG_G("%s",__FUNCTION__);
+    ASSERT_PTR(info);
     
-    if (!soft_token.get()) {
-        return CKR_CRYPTOKI_NOT_INITIALIZED;
-    }
+    if (!soft_token.get()) return CKR_CRYPTOKI_NOT_INITIALIZED;
     
-    memset(args, 17, sizeof(*args));
-    args->cryptokiVersion.major = 1;
-    args->cryptokiVersion.minor = 10;
-    snprintf_fill((char *)args->manufacturerID, 
-      sizeof(args->manufacturerID),
+    memset(info, 17, sizeof(*info));
+    info->cryptokiVersion.major = 1;
+    info->cryptokiVersion.minor = 10;
+    snprintf_fill((char *)info->manufacturerID, 
+      sizeof(info->manufacturerID),
       ' ',
       "SoftToken");
-    snprintf_fill((char *)args->libraryDescription, 
-      sizeof(args->libraryDescription), ' ',
+    snprintf_fill((char *)info->libraryDescription, 
+      sizeof(info->libraryDescription), ' ',
       "SoftToken");
-    args->libraryVersion.major = 0;
-    args->libraryVersion.minor = 1;
+    info->libraryVersion.major = 0;
+    info->libraryVersion.minor = 1;
 
     return CKR_OK;
 }
 
-CK_RV C_GetSlotList(CK_BBOOL tokenPresent, CK_SLOT_ID_PTR pSlotList, CK_ULONG_PTR   pulCount)
+CK_RV C_GetSlotList(CK_BBOOL tokenPresent, CK_SLOT_ID_PTR pSlotList, CK_ULONG_PTR pulCount)
 {
+    WRAP_FUNCTION(C_GetSlotList, handle_exceptions, tokenPresent, pSlotList, pulCount);
+    
     LOG_G("%s",__FUNCTION__);
+    
+    if (!soft_token.get()) return CKR_CRYPTOKI_NOT_INITIALIZED;
 
-    if (soft_token->ready()) {
-        if (pSlotList) {
-            pSlotList[0] = 1;
+    try {
+        if (soft_token->ready()) {
+            if (pSlotList) {
+                pSlotList[0] = 1;
+            }
+            
+            *pulCount = 1;
         }
-        
-        *pulCount = 1;
+        else {
+            *pulCount = (tokenPresent) ? 0 : 1;
+        }
     }
-    else {
-        *pulCount = 0;
+    catch(...) {
+        return CKR_FUNCTION_FAILED;
     }
 
     return CKR_OK;
@@ -184,11 +231,15 @@ CK_RV C_GetSlotList(CK_BBOOL tokenPresent, CK_SLOT_ID_PTR pSlotList, CK_ULONG_PT
 
 CK_RV C_GetSlotInfo(CK_SLOT_ID slotID, CK_SLOT_INFO_PTR pInfo)
 {
+    WRAP_FUNCTION(C_GetSlotInfo, handle_exceptions, slotID, pInfo);
+    
     LOG_G("%s",__FUNCTION__);
-
+    ASSERT_PTR(pInfo);
+    
+    if (!soft_token.get()) return CKR_CRYPTOKI_NOT_INITIALIZED;
+    if (slotID != 1) return  CKR_SLOT_ID_INVALID;
+    
     memset(pInfo, 18, sizeof(*pInfo));
-
-    if (slotID != 1) return CKR_ARGUMENTS_BAD;
 
     snprintf_fill((char *)pInfo->slotDescription, 
       sizeof(pInfo->slotDescription),
@@ -212,11 +263,14 @@ CK_RV C_GetSlotInfo(CK_SLOT_ID slotID, CK_SLOT_INFO_PTR pInfo)
 
 CK_RV C_GetTokenInfo(CK_SLOT_ID slotID, CK_TOKEN_INFO_PTR pInfo)
 {
-    LOG_G("%s",__FUNCTION__);
+    WRAP_FUNCTION(C_GetTokenInfo, handle_exceptions, slotID, pInfo);
     
-    if (!soft_token->ready()) {
-        return CKR_TOKEN_NOT_PRESENT;
-    }
+    LOG_G("%s",__FUNCTION__);
+    ASSERT_PTR(pInfo);
+
+    if (slotID != 1) return  CKR_SLOT_ID_INVALID;    
+    if (!soft_token.get()) return CKR_CRYPTOKI_NOT_INITIALIZED;
+    if (!soft_token->ready()) return CKR_TOKEN_NOT_PRESENT;
 
     memset(pInfo, 19, sizeof(*pInfo));
 
@@ -236,16 +290,7 @@ CK_RV C_GetTokenInfo(CK_SLOT_ID slotID, CK_TOKEN_INFO_PTR pInfo)
       sizeof(pInfo->serialNumber),
       ' ',
       "391137");
-    pInfo->flags = CKF_TOKEN_INITIALIZED | CKF_USER_PIN_INITIALIZED | CKF_PROTECTED_AUTHENTICATION_PATH | CKF_LOGIN_REQUIRED;
-//     pInfo->flags |= CKF_LOGIN_REQUIRED;
-    
-//     if (!soft_token->logged() && std::getenv("SOFTPKCS11_FORCE_PIN")) {
-//         CKF_PROTECTED_AUTHENTICATION_PATH
-//         std::string pin = read_password();
-//         if (!soft_token->login(pin)) {
-//             return CKR_PIN_INCORRECT;
-//         }
-//     }
+    pInfo->flags = CKF_TOKEN_INITIALIZED | CKF_USER_PIN_INITIALIZED | CKF_LOGIN_REQUIRED;
 
     pInfo->ulMaxSessionCount = 5;
     pInfo->ulSessionCount = session_t::count();
@@ -267,24 +312,33 @@ CK_RV C_GetTokenInfo(CK_SLOT_ID slotID, CK_TOKEN_INFO_PTR pInfo)
 
 CK_RV C_GetMechanismList(CK_SLOT_ID slotID, CK_MECHANISM_TYPE_PTR pMechanismList, CK_ULONG_PTR pulCount)
 {
+    WRAP_FUNCTION(C_GetMechanismList, handle_exceptions, slotID, pMechanismList, pulCount);
+    
     LOG_G("%s",__FUNCTION__);
 
-    if (!soft_token->ready()) {
-        return CKR_TOKEN_NOT_PRESENT;
-    }
+    if (slotID != 1) return  CKR_SLOT_ID_INVALID;    
+    if (!soft_token.get()) return CKR_CRYPTOKI_NOT_INITIALIZED;
+    if (!soft_token->ready()) return CKR_TOKEN_NOT_PRESENT;
     
-    *pulCount = 2;
-    if (pMechanismList == NULL_PTR) return CKR_OK;
+    if (pMechanismList == NULL_PTR) {
+        *pulCount = 2;
+        return CKR_OK;
+    }
 
-    pMechanismList[0] = CKM_RSA_X_509;
-    pMechanismList[1] = CKM_RSA_PKCS;
+    if (*pulCount >= 2) {
+        pMechanismList[0] = CKM_RSA_X_509;
+        pMechanismList[1] = CKM_RSA_PKCS;
+    }
 
     return CKR_OK;
 }
 
 CK_RV C_GetMechanismInfo(CK_SLOT_ID slotID, CK_MECHANISM_TYPE type, CK_MECHANISM_INFO_PTR pInfo)
 {
+    WRAP_FUNCTION(C_GetMechanismInfo, handle_exceptions, slotID, type, pInfo);
+    
     LOG_G("%s slot:%d type:%d", __FUNCTION__, slotID, type);
+    
     return CKR_FUNCTION_NOT_SUPPORTED;
 }
 
@@ -293,6 +347,8 @@ CK_RV C_InitToken(CK_SLOT_ID slotID,
         CK_ULONG ulPinLen,
         CK_UTF8CHAR_PTR pLabel)
 {
+    WRAP_FUNCTION(C_InitToken, handle_exceptions, slotID, pPin, ulPinLen, pLabel);
+    
     LOG_G("%s slot:%d", __FUNCTION__, slotID);
     return CKR_FUNCTION_NOT_SUPPORTED;
 }
@@ -303,23 +359,26 @@ CK_RV C_OpenSession(CK_SLOT_ID slotID,
           CK_NOTIFY Notify,
           CK_SESSION_HANDLE_PTR phSession)
 {
+    WRAP_FUNCTION(C_OpenSession, handle_exceptions, slotID, flags, pApplication, Notify, phSession);
+     
     LOG_G("%s slot:%d", __FUNCTION__, slotID);
-    int i;
-
     
-    if (!soft_token->ready()) {
-        return CKR_TOKEN_NOT_PRESENT;
-    }
+    if (slotID != 1) return  CKR_SLOT_ID_INVALID;    
+    if (!soft_token.get()) return CKR_CRYPTOKI_NOT_INITIALIZED;
+    if (!soft_token->ready()) return CKR_TOKEN_NOT_PRESENT;
     
-    auto session = session_t::create();
-    *phSession = *session;
+    *phSession = *session_t::create();
     
     return CKR_OK;
 }
 
 CK_RV C_CloseSession(CK_SESSION_HANDLE hSession)
 {
+    WRAP_FUNCTION(C_CloseSession, handle_exceptions, hSession);
+    
     LOG_G("%s session:%d", __FUNCTION__, hSession);
+    
+    if (session_t::find(hSession) == session_t::end()) return CKR_SESSION_HANDLE_INVALID;
     
     session_t::destroy(hSession);
     return CKR_OK;
@@ -327,28 +386,24 @@ CK_RV C_CloseSession(CK_SESSION_HANDLE hSession)
 
 CK_RV C_GetSessionInfo(CK_SESSION_HANDLE hSession, CK_SESSION_INFO_PTR pInfo)
 {
+    WRAP_FUNCTION(C_GetSessionInfo, handle_exceptions, hSession, pInfo);
+    
     LOG_G("%s session:%d", __FUNCTION__, hSession);
+    ASSERT_PTR(pInfo);
     
-    if (!soft_token->ready()) {
-        return CKR_DEVICE_REMOVED;
-    }
+    if (!soft_token.get()) return CKR_CRYPTOKI_NOT_INITIALIZED;
+    if (session_t::find(hSession) == session_t::end()) return CKR_SESSION_HANDLE_INVALID;
+    if (!soft_token->ready()) return CKR_DEVICE_REMOVED;
     
-    auto session = session_t::find(hSession);
-    if (session == session_t::end()) {
-        return CKR_SESSION_HANDLE_INVALID;
-    }
-
     memset(pInfo, 20, sizeof(*pInfo));
 
     pInfo->slotID = 1;
-    if (soft_token->logged()) {
-        pInfo->state = CKS_RO_USER_FUNCTIONS;
-    }
-    else {
-        pInfo->state = CKS_RO_PUBLIC_SESSION;
-    }
+    pInfo->state = (soft_token->logged())
+        ? CKS_RW_USER_FUNCTIONS
+        : CKS_RO_PUBLIC_SESSION;
     
     pInfo->flags = CKF_SERIAL_SESSION;
+    if (soft_token->logged()) pInfo->flags |= CKF_SERIAL_SESSION;
     pInfo->ulDeviceError = 0;
 
     return CKR_OK;
@@ -791,6 +846,7 @@ CK_RV C_GetFunctionList(CK_FUNCTION_LIST_PTR_PTR ppFunctionList)
     return CKR_OK;
 }
 
+
 CK_FUNCTION_LIST funcs = {
     { 2, 11 },
     C_Initialize,
@@ -867,10 +923,9 @@ CK_FUNCTION_LIST funcs = {
 };
 
 
-
-
-
 }
+
+
 
 
 
