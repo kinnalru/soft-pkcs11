@@ -101,22 +101,17 @@ struct to_attributes : std::unary_function<const fs::directory_entry&, Objects::
             ssh_public_key_t o = ssh_public_key_t();
             attrs = o(desc, attrs);
 
-//             attrs = ssh_public_key_attrs(desc, attrs);
-// 
-//             {
-//                 //create additional unpacked key
-//                 attrs[AttrSshUnpacked] = attribute_t(AttrSshUnpacked, bool_true);
-//                 attrs[CKA_OBJECT_ID] = attribute_t(CKA_OBJECT_ID,  desc->id - 1);
-//                 attrs[CKA_ID] = attribute_t(CKA_ID,  desc->id - 1);
-//                 objects.insert(std::make_pair(desc->id - 1, attrs)).first->first;
-//             };
-//             
-//             attrs.erase(AttrSshUnpacked);
-//             attrs.erase(CKA_VALUE);
-//             attrs[CKA_OBJECT_ID] = attribute_t(CKA_OBJECT_ID,  desc->id);
-//             attrs[CKA_ID] = attribute_t(CKA_ID,  desc->id);
-//             attrs[CKA_LABEL] = attribute_t(CKA_LABEL, "SSH " + attrs[CKA_LABEL].to_string());
-//             attrs[AttrSshPublic] = attribute_t(AttrSshPublic, bool_true);
+            {
+                //create additional unpacked key
+                attrs[AttrSshUnpacked] = attribute_t(AttrSshUnpacked, bool_true);
+                objects.insert(std::make_pair(desc->id - 1, attrs)).first->first;
+            };
+            
+            attrs.erase(AttrSshUnpacked);
+            attrs.erase(CKA_VALUE);
+            attrs[CKA_ID] = attribute_t(CKA_ID,  desc->id);
+            attrs[CKA_LABEL] = attribute_t(CKA_LABEL, "SSH " + attrs[CKA_LABEL].to_string());
+            attrs[AttrSshPublic] = attribute_t(AttrSshPublic, bool_true);
         }
 //         else if (is_rsa_private_key()(desc)) {
 //             rsa_private_key_t o = rsa_private_key_t();
@@ -483,9 +478,9 @@ CK_OBJECT_HANDLE soft_token_t::write(const std::string& filename, const std::vec
 
 std::vector<unsigned char> soft_token_t::sign(CK_OBJECT_HANDLE id, CK_MECHANISM_TYPE type, CK_BYTE_PTR pData, CK_ULONG ulDataLen)
 {
-    auto it = p_->objects.find(id);
-    
-    if (it == p_->objects.end()) throw std::runtime_error("err");
+    if (p_->objects.find(id) == p_->objects.end()) {
+      throw pkcs11_exception_t(CKR_KEY_HANDLE_INVALID, "Object handle invalid");
+    }
     
     const auto str = read(id);
     std::vector<char> data(str.begin(), str.end());
@@ -495,18 +490,15 @@ std::vector<unsigned char> soft_token_t::sign(CK_OBJECT_HANDLE id, CK_MECHANISM_
         ::fclose
     );
     
-    if (EVP_PKEY *pkey = PEM_read_PrivateKey(file.get(), NULL, NULL, NULL)) {
+    pem_password_cb cc;
+    
+    
+    if (EVP_PKEY *pkey = PEM_read_PrivateKey(file.get(), NULL, ask_password_cb, NULL)) {
         if (pkey->pkey.rsa == NULL) {
-//             return CKR_ARGUMENTS_BAD;
-            throw std::runtime_error("err");
+            throw pkcs11_exception_t(CKR_FUNCTION_FAILED, "Can't read private key");
         }
-        
-        //RSA_blinding_off(rsa); /* XXX RAND is broken while running in mozilla ? */
-        
         std::vector<unsigned char> buffer(RSA_size(pkey->pkey.rsa));
-        
         int padding, padding_len;
-        
         
         switch(type) {
         case CKM_RSA_PKCS:
@@ -518,33 +510,23 @@ std::vector<unsigned char> soft_token_t::sign(CK_OBJECT_HANDLE id, CK_MECHANISM_
             padding_len = 0;
             break;
         default:
-            throw std::runtime_error("err");
-//             ret = CKR_FUNCTION_NOT_SUPPORTED;
-//             goto out;
+            throw pkcs11_exception_t(CKR_MECHANISM_INVALID, "Mechanism not supported");
         }
         
         
         if (pData == NULL_PTR) {
-            throw std::runtime_error("err");
-//             LOG("data NULL\n");
-//             ret = CKR_ARGUMENTS_BAD;
-//             goto out;
+            throw pkcs11_exception_t(CKR_ARGUMENTS_BAD, "Data is empty");
         }
 
-        
         auto len = RSA_private_encrypt(ulDataLen, pData, buffer.data(), pkey->pkey.rsa, padding);
-        
         
         LOG("private encrypt done\n");
         if (len <= 0) {
-            throw std::runtime_error("err");
-//             ret = CKR_DEVICE_ERROR;
-//             goto out;
+            throw pkcs11_exception_t(CKR_FUNCTION_FAILED, "error in RSA_private_encrypt");
         }
         if (len > buffer.size()) {
-            abort();
+            throw pkcs11_exception_t(CKR_FUNCTION_FAILED, "internal buffer too small");
         }
-        
         
         return buffer;
     }
@@ -688,7 +670,7 @@ void soft_token_t::reset()
     LOG("2\n");
     
     for(auto it = p_->objects.begin(); it != p_->objects.end(); ++it ) {
-      LOG("  *** Final obejct: %s %s - %lu\n", it->second.at(CKA_LABEL).to_string().c_str(), std::to_string(it->first).c_str(), it->second.at(CKA_ID).to_id());
+      //LOG("  *** Final obejct: %s %s - %lu\n", it->second.at(CKA_LABEL).to_string().c_str(), std::to_string(it->first).c_str(), it->second.at(CKA_ID).to_id());
       print_attributes(it->second);
     }
 }

@@ -209,6 +209,23 @@ std::string ask_password()
 }
 
 
+int ask_password_cb(char* buf, int size, int rwflag, void* userdata)
+{
+    std::string password = ask_password();
+    
+    if (password.empty()) {
+        return 0;
+    }
+    
+    st_logf("PASS1: %d %s\n", size, password.c_str());
+    
+    memcpy(buf, password.c_str(), std::min(size_t(size), password.size()));
+    
+    st_logf("PASS: %s\n", buf);
+    
+    return std::min(size_t(size), password.size());
+}
+
 
 std::vector<char> piped(const std::string& cmd, const std::vector<char>& input) {
     std::vector<char> result;

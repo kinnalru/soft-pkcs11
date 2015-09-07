@@ -555,7 +555,6 @@ CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, 
         }
         else if (it == attrs.end()) {
             pTemplate[i].ulValueLen = (CK_ULONG)-1;
-            return CKR_ATTRIBUTE_TYPE_INVALID;
         }
     }
     

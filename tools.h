@@ -31,6 +31,8 @@ std::string read_password();
 
 std::string ask_password();
 
+int ask_password_cb(char *buf, int size, int rwflag, void *userdata);
+
 std::vector<char> piped(const std::string& cmd, const std::vector<char>& input = std::vector<char>());
 
 int start(const std::string& cmd, const std::vector<char>& input = std::vector<char>());
