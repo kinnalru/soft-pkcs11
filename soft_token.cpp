@@ -432,7 +432,7 @@ Attributes soft_token_t::attributes(CK_OBJECT_HANDLE id) const
     return Attributes();
 }
 
-bool soft_token_t::has_key(CK_OBJECT_HANDLE id) const
+bool soft_token_t::has_object(CK_OBJECT_HANDLE id) const
 {
     return p_->objects.find(id) != p_->objects.end();
 }

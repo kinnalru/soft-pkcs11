@@ -40,7 +40,7 @@ public:
     static CK_OBJECT_HANDLE handle_invalid();    
     
     Attributes attributes(CK_OBJECT_HANDLE id) const;
-    bool has_key(CK_OBJECT_HANDLE id) const;
+    bool has_object(CK_OBJECT_HANDLE id) const;
     bool check(CK_OBJECT_HANDLE id, const Attributes& attrs) const;
      
     std::string read(CK_OBJECT_HANDLE id);
