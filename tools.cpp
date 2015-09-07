@@ -16,6 +16,8 @@
 #include <iostream>
 #include <system_error>
 
+#include <boost/algorithm/string.hpp>
+
 #include <openssl/bn.h>
 
 #include "tools.h"
@@ -199,7 +201,9 @@ std::string ask_password()
     else {
         try {
             const auto data = piped("if which kdialog &> /dev/null; then kdialog --password 'Please enter PIN' --title 'Logging to SoftToken'; elif which x11-ssh-askpass &> /dev/null; then x11-ssh-askpass 'Please enter PIN to login to SoftToken'; else  exit 1; fi");
-            return std::string(data.begin(), data.end());
+            std::string pass(data.begin(), data.end());
+            boost::algorithm::trim(pass);
+            return pass;
         }
         catch(...) {
         }
@@ -217,13 +221,9 @@ int ask_password_cb(char* buf, int size, int rwflag, void* userdata)
         return 0;
     }
     
-    st_logf("PASS1: %d %s\n", size, password.c_str());
-    
-    memcpy(buf, password.c_str(), std::min(size_t(size), password.size()));
-    
-    st_logf("PASS: %s\n", buf);
-    
-    return std::min(size_t(size), password.size());
+    const size_t len = std::min(size_t(size), password.size());
+    memcpy(buf, password.c_str(), len);
+    return len;
 }
 
 
