@@ -16,6 +16,11 @@
 #include <list>
 #include <set>
 
+#include <boost/fusion/container/map.hpp>
+#include <boost/fusion/include/map.hpp>
+#include <boost/fusion/include/at_key.hpp>
+#include <boost/fusion/include/pair.hpp>
+
 #include <boost/foreach.hpp>
 
 #include "pkcs11/pkcs11u.h"
@@ -25,6 +30,8 @@
 #include "soft_token.h"
 #include "exceptions.h"
 #include "log.h"
+
+
 
 std::auto_ptr<soft_token_t> soft_token;
 
@@ -122,7 +129,8 @@ CK_SESSION_HANDLE session_t::_id = 0;
 std::list<session_t> session_t::_sessions = std::list<session_t>();
 
 
-
+template <typename Function, typename ...Args>
+CK_RV wrap_func(Args... args);
 
 extern "C" {
   
@@ -780,13 +788,16 @@ CK_RV C_GetFunctionList(CK_FUNCTION_LIST_PTR_PTR ppFunctionList)
 }
 
 
+
 CK_FUNCTION_LIST funcs = {
     { 2, 11 },
-    C_Initialize,
+    //C_Initialize,
+    static_cast<CK_C_Initialize>(wrap_func<CK_C_Initialize>),
     C_Finalize,
     C_GetInfo,
     C_GetFunctionList,
-    C_GetSlotList,
+    //C_GetSlotList,
+    static_cast<CK_C_GetSlotList>(wrap_func<CK_C_GetSlotList>),
     C_GetSlotInfo,
     C_GetTokenInfo,
     C_GetMechanismList,
@@ -858,7 +869,65 @@ CK_FUNCTION_LIST funcs = {
 
 }
 
+#include <tuple>
 
+#include <boost/function_types/components.hpp>
+#include <boost/function_types/parameter_types.hpp>
+#include <boost/function_types/function_arity.hpp>
+
+typedef boost::fusion::map<
+    boost::fusion::pair<CK_C_Initialize, CK_C_Initialize>,
+    boost::fusion::pair<CK_C_GetSlotList, CK_C_GetSlotList>
+> FuncMap;
+
+FuncMap fm(
+    boost::fusion::make_pair<CK_C_Initialize>(reinterpret_cast<CK_C_Initialize>(C_Initialize)),
+    boost::fusion::make_pair<CK_C_GetSlotList>(reinterpret_cast<CK_C_GetSlotList>(C_GetSlotList))
+);
+
+template <int Args>
+struct function_dispatcher {
+
+};
+
+template <>
+struct function_dispatcher<1> {
+  template <typename Function, typename ...Args>
+  static CK_RV call(Function func, std::tuple<Args...> args) {
+    return func(std::get<0>(args));
+  }
+};
+
+template <>
+struct function_dispatcher<2> {
+  template <typename Function, typename ...Args>
+  static CK_RV call(Function func, std::tuple<Args...> args) {
+    return func(std::get<0>(args), std::get<1>(args));
+  }
+};
+
+template <>
+struct function_dispatcher<3> {
+  template <typename Function, typename ...Args>
+  static CK_RV call(Function func, std::tuple<Args...> args) {
+    return func(std::get<0>(args), std::get<1>(args), std::get<2>(args));
+  }
+};
+
+template <typename Function, typename ...Args>
+CK_RV wrap_func(Args... args) {
+  
+//   typedef parameter_types< bool(int) >
+  
+    LOG("111 %d", boost::function_types::function_arity<Function>::value)
+    auto function = boost::fusion::at_key<Function>(fm);
+    return function(args...);
+//     std::tuple<Args...> tt(args...);
+//     function_dispatcher<boost::function_types::function_arity<Function>::value>::call(function, tt);
+    LOG("222");
+  
+    return 0;
+}
 
 
 
