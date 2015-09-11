@@ -908,26 +908,24 @@ typedef boost::fusion::map<
 #include <boost/preprocessor/control/if.hpp>
 #include <boost/preprocessor/facilities/empty.hpp>
 #include <boost/preprocessor/control/iif.hpp>
-
+#include <boost/preprocessor.hpp>
 
 #define ADD_CK(name) CK_#name;
 
 
 #define TUPLE (C_Initialize, C_Finalize)
-
 #define __SEQ BOOST_PP_TUPLE_TO_SEQ(TUPLE)
-
-#define __MACRO(r, data, elem) BOOST_PP_CAT(pref_, elem)
-
-#define RESULT BOOST_PP_SEQ_FOR_EACH(__MACRO, 0, __SEQ)
-
-#define R2 BOOST_PP_SEQ_TO_TUPLE(RESULT);
+#define __MACRO(r, data, elem) (BOOST_PP_CAT(CK_, elem))
+#define __R1 BOOST_PP_SEQ_FOR_EACH(__MACRO, 0, __SEQ)
+#define __R2 BOOST_PP_SEQ_TO_TUPLE(__R1)
+#define __SIZE BOOST_PP_TUPLE_SIZE(__R2)
+#define RESULT BOOST_PP_TUPLE_REM_CTOR(__SIZE, __R2)
 // 
 // #define R3 BOOST_PP_REMOVE_PARENS(DATAP);
 // 
-// typedef boost::fusion::tuple<
-//     R2
-// > FunctionsList;
+typedef boost::fusion::tuple<
+    RESULT
+> FunctionsList;
 
 
 //typedef boost::mpl::transform<FunctionsList, boost::add_pointer<boost::mpl::_1> >::type result;
