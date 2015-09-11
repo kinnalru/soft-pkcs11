@@ -129,9 +129,6 @@ CK_SESSION_HANDLE session_t::_id = 0;
 std::list<session_t> session_t::_sessions = std::list<session_t>();
 
 
-template <typename Function, typename ...Args>
-CK_RV wrap_function_impl(Args... args);
-
 template <typename Function>
 Function wrap_function();
 
@@ -389,9 +386,12 @@ CK_RV C_CloseSession(CK_SESSION_HANDLE hSession)
     
     LOG_G("%s session:%d", __FUNCTION__, hSession);
     
+    LOG("s1")
     if (session_t::find(hSession) == session_t::end()) return CKR_SESSION_HANDLE_INVALID;
     
+    LOG("s2")
     session_t::destroy(hSession);
+    LOG("s3")
     return CKR_OK;
 }
 
@@ -821,7 +821,8 @@ CK_FUNCTION_LIST funcs = {
     reinterpret_cast<CK_C_SetAttributeValue>(func_t<14>::not_supported), /* C_SetAttributeValue */
     wrap_function<CK_C_FindObjectsInit>(),
     wrap_function<CK_C_FindObjects>(),
-    C_FindObjectsFinal,
+    wrap_function<CK_C_FindObjectsFinal>(),
+//     C_FindObjectsFinal,
         reinterpret_cast<CK_C_EncryptInit>(func_t<16>::not_supported), //C_EncryptInit,
         reinterpret_cast<CK_C_Encrypt>(func_t<17>::not_supported), //C_Encrypt,
         reinterpret_cast<CK_C_EncryptUpdate>(func_t<18>::not_supported), //C_EncryptUpdate,
@@ -869,7 +870,10 @@ CK_FUNCTION_LIST funcs = {
 
 }
 
-#include <tuple>
+#define FUSION_MAX_MAP_SIZE 30
+#define FUSION_MAX_VECTOR_SIZE 30
+
+#include <boost/fusion/tuple.hpp>
 
 #include <boost/function_types/components.hpp>
 #include <boost/function_types/parameter_types.hpp>
@@ -880,10 +884,74 @@ CK_FUNCTION_LIST funcs = {
 // int i= boost::function_types::function_arity<decltype(C_Initialize)>::value;
 
 
-// typedef boost::fusion::map<
-//     boost::fusion::pair<CK_C_Initialize, CK_C_Initialize>,
-//     boost::fusion::pair<CK_C_GetSlotList, CK_C_GetSlotList>
-// > FuncMap;
+typedef boost::fusion::map<
+    boost::fusion::pair<CK_C_Initialize, CK_C_Initialize>,
+    boost::fusion::pair<CK_C_GetSlotList, CK_C_GetSlotList>
+> FuncMap;
+
+#include <boost/fusion/include/push_back.hpp>
+#include <boost/fusion/include/accumulate.hpp>
+
+#include <boost/fusion/include/next.hpp>
+
+#include <boost/mpl/placeholders.hpp>
+#include <boost/mpl/transform.hpp>
+
+
+#include <boost/preprocessor/punctuation/comma_if.hpp>
+#include <boost/preprocessor/seq/for_each_i.hpp>
+#include <boost/preprocessor/seq/pop_front.hpp>
+#include <boost/preprocessor/seq/for_each.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/control/if.hpp>
+#include <boost/preprocessor/facilities/empty.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+
+
+#define ADD_CK(name) CK_#name;
+
+
+#define TUPLE (C_Initialize, C_Finalize)
+
+#define __SEQ BOOST_PP_TUPLE_TO_SEQ(TUPLE)
+
+#define __MACRO(r, data, elem) BOOST_PP_CAT(pref_, elem)
+
+#define RESULT BOOST_PP_SEQ_FOR_EACH(__MACRO, 0, __SEQ)
+
+#define R2 BOOST_PP_SEQ_TO_TUPLE(RESULT);
+// 
+// #define R3 BOOST_PP_REMOVE_PARENS(DATAP);
+// 
+// typedef boost::fusion::tuple<
+//     R2
+// > FunctionsList;
+
+
+//typedef boost::mpl::transform<FunctionsList, boost::add_pointer<boost::mpl::_1> >::type result;
+
+namespace bf = boost::fusion;
+namespace bm = boost::mpl;
+
+// typedef bm::fold<
+//           FunctionsList
+//         , boost::fusion::map<>
+//         , bf::result_of::push_back< bm::_1, bf::pair< bm::_2, bm::_2 > >
+//         >::type functions_c1;
+
+
+// typedef boost::fusion::result_of::next<boost::fusion::result_of::begin<boost::tuple<int, double>>::type>::type second;
+// 
+// 
+// typedef boost::fusion::result_of::push_back<FuncMap, boost::fusion::pair<CK_C_Initialize, CK_C_Initialize>>::type Map2;
+// 
+// template <typename Map, typename It = boost::fusion::result_of::begin<Map>::type>
+// struct meach {
+//     
+// };
+
 
 // FuncMap fm(
 //     boost::fusion::make_pair<CK_C_Initialize>(reinterpret_cast<CK_C_Initialize>(C_Initialize)),

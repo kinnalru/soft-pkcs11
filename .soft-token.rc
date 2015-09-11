@@ -2,5 +2,4 @@
 [ssh]
 driver=fs
 #path=/home/jerry/devel/jerry/pscs/soft-pkcs/keys2
-path=/home/jerry/devel/soft-pkcs/keys2
-
+path=/home/jerry/devel/soft-pkcs/keys
