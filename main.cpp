@@ -32,6 +32,14 @@
 #include "log.h"
 
 
+unsigned constexpr const_hash(char const *input) {
+    return *input ?
+      static_cast<unsigned int>(*input) + 33 * const_hash(input + 1) :
+      5381;
+}
+
+template <long long T>
+struct tag_s {};
 
 std::auto_ptr<soft_token_t> soft_token;
 
@@ -891,17 +899,9 @@ CK_FUNCTION_LIST funcs = {
 template <typename Function>
 Function rvcast(Function f) {return f;}
 
-unsigned constexpr const_hash(char const *input) {
-    return *input ?
-      static_cast<unsigned int>(*input) + 33 * const_hash(input + 1) :
-      5381;
-}
 
-template <long long T>
-struct tag_s {};
-
-//#define __ADD_TAG(r, data, elem) (BOOST_PP_CAT(CK_, elem))
-#define __ADD_TAG(r, data, elem) (tag_s<const_hash(BOOST_STRINGIZE(BOOST_PP_CAT(CK_, elem)))>)
+#define __ADD_TAG(r, data, elem) (BOOST_PP_CAT(CK_, elem))
+//#define __ADD_TAG(r, data, elem) (tag_s<const_hash(BOOST_STRINGIZE(BOOST_PP_CAT(CK_, elem)))>)
 
 #define __ADD_RVCAST(r, data, elem) (rvcast(elem))
 
@@ -941,19 +941,36 @@ const auto functions_c = boost::fusion::make_map<FUNCTION_TYPES>(FUNCTION_CASTS)
 
 #define TTT(elem) BOOST_STRINGIZE(tag_s<const_hash(#elem)>)
 
+struct increment {
+  
+    template <typename T>
+    void operator()(T& t) const {
+      LOG("[%lu]", t.second);  
+    }
+  
+};
+
+template <typename Function>
+Function wrap_function_test() {
+  std::cerr << "123" << std::endl;
+}
+
 static const bool b = [](){
 
-    std::cerr << "test: " << TTT(test) << std::endl;;
+    
+    std::cerr << "test: " << BOOST_PP_TUPLE_SIZE(__TUPLE_WITH_CK) << " - " << boost::fusion::size(functions_c) << std::endl;;
   
     std::cerr << "h1:" << const_hash("h1") << std::endl;
     std::cerr << "h2:" << const_hash("h2") << std::endl;
     std::cerr << "h1:" << const_hash("h1") << std::endl;
   
-  LOG("FindOF: [%lu]", C_FindObjectsFinal);  
+    wrap_function_test<CK_C_Login, 123>();
+    
+//   LOG("FindOF: [%lu]", C_FindObjectsFinal);  
 //   LOG("FindOFW: [%lu]", boost::fusion::at_key<CK_C_FindObjectsFinal>(functions_c));  
-  
-//   boost::fusion::for_each(functions_c, increment());
-  
+//   
+//     boost::fusion::for_each(functions_c, increment());
+//   
 //   LOG("FindOFW: [%lu]", boost::fusion::at_key<CK_C_FindObjectsFinal>(functions_c));  
   
   return true;
@@ -971,6 +988,8 @@ template <typename Function>
 Function wrap_function() {
   return static_cast<Function>(wrap_function_impl<Function>);
 }
+
+
 
 
 
