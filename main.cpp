@@ -382,7 +382,7 @@ CK_RV C_OpenSession(CK_SLOT_ID slotID,
 
 CK_RV C_CloseSession(CK_SESSION_HANDLE hSession)
 {
-    WRAP_FUNCTION(C_CloseSession, handle_exceptions, hSession);
+//     WRAP_FUNCTION(C_CloseSession, handle_exceptions, hSession);
     
     LOG_G("%s session:%d", __FUNCTION__, hSession);
     
@@ -507,15 +507,27 @@ CK_RV C_FindObjects(CK_SESSION_HANDLE hSession,
 
 CK_RV C_FindObjectsFinal(CK_SESSION_HANDLE hSession)
 {
+    LOG("F1 %d", hSession);
     WRAP_FUNCTION(C_FindObjectsFinal, handle_exceptions, hSession);
+    
+    LOG("F2 %d", hSession);
 
     LOG_G("%s session:%d", __FUNCTION__, hSession);
     
     if (!soft_token.get()) return CKR_CRYPTOKI_NOT_INITIALIZED;
+    
+    LOG("F3 %d", hSession);
+    
     if (session_t::find(hSession) == session_t::end()) return CKR_SESSION_HANDLE_INVALID;
+    
+    LOG("F4 %d", hSession);
     if (!soft_token->ready()) return CKR_DEVICE_REMOVED;
     
+    LOG("F5 %d", hSession);
+    
     session_t::find(hSession)->objects_iterator = soft_token->end();
+    
+    LOG("F6 %d", hSession);
     
     return CKR_OK;
 }
@@ -805,8 +817,8 @@ CK_FUNCTION_LIST funcs = {
     wrap_function<CK_C_InitToken>(),
     wrap_function<CK_C_InitPIN>(),
     reinterpret_cast<CK_C_SetPIN>(func_t<2>::not_supported), /* C_SetPIN */
-    wrap_function<CK_C_OpenSession>(),
-    wrap_function<CK_C_CloseSession>(),
+    C_OpenSession,
+    C_CloseSession,
         reinterpret_cast<CK_C_CloseAllSessions>(func_t<4>::not_supported), //C_CloseAllSessions,
     wrap_function<CK_C_GetSessionInfo>(),
     reinterpret_cast<CK_C_GetOperationState>(func_t<6>::not_supported), /* C_GetOperationState */
@@ -873,159 +885,92 @@ CK_FUNCTION_LIST funcs = {
 #define FUSION_MAX_MAP_SIZE 30
 #define FUSION_MAX_VECTOR_SIZE 30
 
-#include <boost/fusion/tuple.hpp>
-
-#include <boost/function_types/components.hpp>
-#include <boost/function_types/parameter_types.hpp>
-#include <boost/function_types/function_arity.hpp>
 #include <boost/fusion/include/make_map.hpp>
-
-
-// int i= boost::function_types::function_arity<decltype(C_Initialize)>::value;
-
-
-typedef boost::fusion::map<
-    boost::fusion::pair<CK_C_Initialize, CK_C_Initialize>,
-    boost::fusion::pair<CK_C_GetSlotList, CK_C_GetSlotList>
-> FuncMap;
-
-#include <boost/fusion/include/push_back.hpp>
-#include <boost/fusion/include/accumulate.hpp>
-
-#include <boost/fusion/include/next.hpp>
-
-#include <boost/mpl/placeholders.hpp>
-#include <boost/mpl/transform.hpp>
-
-
-#include <boost/preprocessor/punctuation/comma_if.hpp>
-#include <boost/preprocessor/seq/for_each_i.hpp>
-#include <boost/preprocessor/seq/pop_front.hpp>
-#include <boost/preprocessor/seq/for_each.hpp>
-#include <boost/preprocessor/variadic/elem.hpp>
-#include <boost/preprocessor/cat.hpp>
-#include <boost/preprocessor/tuple/to_seq.hpp>
-#include <boost/preprocessor/control/if.hpp>
-#include <boost/preprocessor/facilities/empty.hpp>
-#include <boost/preprocessor/control/iif.hpp>
 #include <boost/preprocessor.hpp>
 
-#define ADD_CK(name) CK_#name;
-
-
-#define TUPLE (C_Initialize, C_Finalize)
-#define __SEQ BOOST_PP_TUPLE_TO_SEQ(TUPLE)
-#define __MACRO(r, data, elem) (BOOST_PP_CAT(CK_, elem))
-#define __R1 BOOST_PP_SEQ_FOR_EACH(__MACRO, 0, __SEQ)
-#define __R2 BOOST_PP_SEQ_TO_TUPLE(__R1)
-#define __SIZE BOOST_PP_TUPLE_SIZE(__R2)
-#define RESULT BOOST_PP_TUPLE_REM_CTOR(__SIZE, __R2)
-// 
-// #define R3 BOOST_PP_REMOVE_PARENS(DATAP);
-// 
-typedef boost::fusion::tuple<
-    RESULT
-> FunctionsList;
-
-
-//typedef boost::mpl::transform<FunctionsList, boost::add_pointer<boost::mpl::_1> >::type result;
-
-namespace bf = boost::fusion;
-namespace bm = boost::mpl;
-
-// typedef bm::fold<
-//           FunctionsList
-//         , boost::fusion::map<>
-//         , bf::result_of::push_back< bm::_1, bf::pair< bm::_2, bm::_2 > >
-//         >::type functions_c1;
-
-
-// typedef boost::fusion::result_of::next<boost::fusion::result_of::begin<boost::tuple<int, double>>::type>::type second;
-// 
-// 
-// typedef boost::fusion::result_of::push_back<FuncMap, boost::fusion::pair<CK_C_Initialize, CK_C_Initialize>>::type Map2;
-// 
-// template <typename Map, typename It = boost::fusion::result_of::begin<Map>::type>
-// struct meach {
-//     
-// };
-
-
-// FuncMap fm(
-//     boost::fusion::make_pair<CK_C_Initialize>(reinterpret_cast<CK_C_Initialize>(C_Initialize)),
-//     boost::fusion::make_pair<CK_C_GetSlotList>(reinterpret_cast<CK_C_GetSlotList>(C_GetSlotList))
-// );
-
 template <typename Function>
-Function fcast(Function f) {return f;}
+Function rvcast(Function f) {return f;}
 
-const auto functions_c = boost::fusion::make_map<
-    CK_C_Initialize, CK_C_Finalize,
-    CK_C_GetInfo, CK_C_GetFunctionList, CK_C_GetSlotList, CK_C_GetSlotInfo, CK_C_GetTokenInfo,
-    CK_C_GetMechanismList, CK_C_GetMechanismInfo,
-    CK_C_InitToken, CK_C_InitPIN,
-    CK_C_OpenSession, CK_C_CloseSession,
-    CK_C_GetSessionInfo,
-    CK_C_Login, CK_C_Logout,
-    CK_C_CreateObject,
-    CK_C_GetAttributeValue,
-    CK_C_FindObjectsInit, CK_C_FindObjects, CK_C_FindObjectsFinal,
-    CK_C_SignInit, CK_C_Sign, CK_C_SignUpdate, CK_C_SignFinal
->(
-  fcast(C_Initialize), fcast(C_GetSlotList),
-  fcast(C_GetInfo), fcast(C_GetFunctionList), fcast(C_GetSlotList), fcast(C_GetSlotInfo), fcast(C_GetTokenInfo),
-  fcast(C_GetMechanismList), fcast(C_GetMechanismInfo),
-  fcast(C_InitToken), fcast(C_InitPIN),
-  fcast(C_OpenSession), fcast(C_CloseSession),
-  fcast(C_GetSessionInfo),
-  fcast(C_Login), fcast(C_Logout),
-  fcast(C_CreateObject),
-  fcast(C_GetAttributeValue),
-  fcast(C_FindObjectsInit), fcast(C_FindObjects), fcast(C_FindObjectsFinal),
-  fcast(C_SignInit), fcast(C_Sign), fcast(C_SignUpdate), fcast(C_SignFinal)
-);
+unsigned constexpr const_hash(char const *input) {
+    return *input ?
+      static_cast<unsigned int>(*input) + 33 * const_hash(input + 1) :
+      5381;
+}
 
-// template <int Args>
-// struct function_dispatcher {
-// 
-// };
-// 
-// template <>
-// struct function_dispatcher<1> {
-//   template <typename Function, typename ...Args>
-//   static CK_RV call(Function func, std::tuple<Args...> args) {
-//     return func(std::get<0>(args));
-//   }
-// };
-// 
-// template <>
-// struct function_dispatcher<2> {
-//   template <typename Function, typename ...Args>
-//   static CK_RV call(Function func, std::tuple<Args...> args) {
-//     return func(std::get<0>(args), std::get<1>(args));
-//   }
-// };
-// 
-// template <>
-// struct function_dispatcher<3> {
-//   template <typename Function, typename ...Args>
-//   static CK_RV call(Function func, std::tuple<Args...> args) {
-//     return func(std::get<0>(args), std::get<1>(args), std::get<2>(args));
-//   }
-// };
+template <long long T>
+struct tag_s {};
+
+//#define __ADD_TAG(r, data, elem) (BOOST_PP_CAT(CK_, elem))
+#define __ADD_TAG(r, data, elem) (tag_s<const_hash(BOOST_STRINGIZE(BOOST_PP_CAT(CK_, elem)))>)
+
+#define __ADD_RVCAST(r, data, elem) (rvcast(elem))
+
+#define __ADD_PRINT(r, data, elem) (rvcast(elem))
+
+#define TUPLE (\
+    C_Initialize, C_Finalize,\
+    C_GetInfo, C_GetFunctionList, C_GetSlotList, C_GetSlotInfo, C_GetTokenInfo,\
+    C_GetMechanismList, C_GetMechanismInfo,\
+    C_InitToken, C_InitPIN,\
+    C_OpenSession, C_CloseSession,\
+    C_GetSessionInfo,\
+    C_Login, C_Logout,\
+    C_CreateObject,\
+    C_GetAttributeValue,\
+    C_FindObjectsInit, C_FindObjects, C_FindObjectsFinal,\
+    C_SignInit, C_Sign, C_SignUpdate, C_SignFinal\
+)
+
+#define __TUPLE_SEQ BOOST_PP_TUPLE_TO_SEQ(TUPLE)
+
+#define __SEQ_WITH_CK BOOST_PP_SEQ_FOR_EACH(__ADD_TAG, 0, __TUPLE_SEQ)
+#define __SEQ_WITH_RVCAST BOOST_PP_SEQ_FOR_EACH(__ADD_RVCAST, 0, __TUPLE_SEQ)
+
+#define __TUPLE_WITH_CK BOOST_PP_SEQ_TO_TUPLE(__SEQ_WITH_CK)
+#define __TUPLE_WITH_RVCAST BOOST_PP_SEQ_TO_TUPLE(__SEQ_WITH_RVCAST)
+
+
+#define FUNCTION_TYPES BOOST_PP_TUPLE_REM_CTOR(BOOST_PP_TUPLE_SIZE(__TUPLE_WITH_CK), __TUPLE_WITH_CK)
+#define FUNCTION_CASTS BOOST_PP_TUPLE_REM_CTOR(BOOST_PP_TUPLE_SIZE(__TUPLE_WITH_RVCAST), __TUPLE_WITH_RVCAST)
+
+#include <boost/fusion/algorithm/iteration/for_each.hpp>
+#include <boost/fusion/include/for_each.hpp>
+
+
+const auto functions_c = boost::fusion::make_map<FUNCTION_TYPES>(FUNCTION_CASTS);
+
+#define TTT(elem) BOOST_STRINGIZE(tag_s<const_hash(#elem)>)
+
+static const bool b = [](){
+
+    std::cerr << "test: " << TTT(test) << std::endl;;
+  
+    std::cerr << "h1:" << const_hash("h1") << std::endl;
+    std::cerr << "h2:" << const_hash("h2") << std::endl;
+    std::cerr << "h1:" << const_hash("h1") << std::endl;
+  
+  LOG("FindOF: [%lu]", C_FindObjectsFinal);  
+//   LOG("FindOFW: [%lu]", boost::fusion::at_key<CK_C_FindObjectsFinal>(functions_c));  
+  
+//   boost::fusion::for_each(functions_c, increment());
+  
+//   LOG("FindOFW: [%lu]", boost::fusion::at_key<CK_C_FindObjectsFinal>(functions_c));  
+  
+  return true;
+}();
+
+
 
 template <typename Function, typename ...Args>
 CK_RV wrap_function_impl(Args... args) {
-    return boost::fusion::at_key<Function>(functions_c)(args...);
+//     return boost::fusion::at_key<Function>(functions_c)(args...);
+  return 0;
 }
 
 template <typename Function>
 Function wrap_function() {
   return static_cast<Function>(wrap_function_impl<Function>);
 }
-
-
-
 
 
 
