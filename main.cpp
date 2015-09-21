@@ -16,11 +16,6 @@
 #include <list>
 #include <set>
 
-#include <boost/fusion/container/map.hpp>
-#include <boost/fusion/include/map.hpp>
-#include <boost/fusion/include/at_key.hpp>
-#include <boost/fusion/include/pair.hpp>
-
 #include <boost/foreach.hpp>
 
 #include "pkcs11/pkcs11u.h"
@@ -31,21 +26,15 @@
 #include "exceptions.h"
 #include "log.h"
 
+#include "function_wrap.h"
 
-unsigned constexpr const_hash(char const *input) {
-    return *input ?
-      static_cast<unsigned int>(*input) + 33 * const_hash(input + 1) :
-      5381;
-}
-
-template <long long T>
-struct tag_s {};
+#define ASSERT_PTR(ptr)\
+    if (ptr == NULL_PTR) throw pkcs11_exception_t(CKR_ARGUMENTS_BAD, "Pointer " #ptr " must present.");
+    
+#define ASSERT_NOT_PTR(ptr)\
+    if (ptr != NULL_PTR) throw pkcs11_exception_t(CKR_ARGUMENTS_BAD, "Pointer " #ptr " must present.");
 
 std::auto_ptr<soft_token_t> soft_token;
-
-static void log(const std::string& str) {
-    st_logf("%s\n", str.c_str());
-}
 
 template <int ID>
 struct func_t {
@@ -55,39 +44,26 @@ struct func_t {
     }
 };
 
-template <typename Function, typename... Args>
-CK_RV handle_exceptions(Function f, Args... args) {
-    try {
-        return f(args...);
+struct exception_handler {
+    template <typename Function, typename... Args>
+    static CK_RV handle(Function f, Args... args) {
+        try {
+            return f(args...);
+        }
+        catch (pkcs11_exception_t& e) {
+            LOG("PKCS Error: %s", e.what());
+            return e.rv;
+        }
+        catch (std::exception& e) {
+            LOG("Error: %s", e.what());
+            return CKR_FUNCTION_FAILED;
+        }
+        catch (...) {
+            LOG("Unexpected Error");
+            return CKR_GENERAL_ERROR;
+        }
     }
-    catch (pkcs11_exception_t& e) {
-        LOG("PKCS Error: %s", e.what());
-        return e.rv;
-    }
-    catch (std::exception& e) {
-        LOG("Error: %s", e.what());
-        return CKR_FUNCTION_FAILED;
-    }
-    catch (...) {
-        LOG("Unexpected Error");
-        return CKR_GENERAL_ERROR;
-    }
-}
-
-#define WRAP_FUNCTION(self, wrapper, ...)\
-    static bool guard = true;\
-    if (!guard) {\
-        guard = true;\
-        auto result = wrapper(self, ##__VA_ARGS__);\
-        guard = false;\
-        return result;\
-    }
-    
-#define ASSERT_PTR(ptr)\
-    if (ptr == NULL_PTR) throw pkcs11_exception_t(CKR_ARGUMENTS_BAD, "Pointer " #ptr " must present.");
-    
-#define ASSERT_NOT_PTR(ptr)\
-    if (ptr != NULL_PTR) throw pkcs11_exception_t(CKR_ARGUMENTS_BAD, "Pointer " #ptr " must present.");
+};
 
 struct session_t {
     
@@ -137,15 +113,10 @@ CK_SESSION_HANDLE session_t::_id = 0;
 std::list<session_t> session_t::_sessions = std::list<session_t>();
 
 
-template <typename Function>
-Function wrap_function();
-
 extern "C" {
   
 CK_RV C_Initialize(CK_VOID_PTR a)
 {
-    WRAP_FUNCTION(C_Initialize, handle_exceptions, a);
-    
     LOG_G("%s",__FUNCTION__);
     
     if (CK_C_INITIALIZE_ARGS_PTR args = reinterpret_cast<CK_C_INITIALIZE_ARGS_PTR>(a)) {
@@ -170,8 +141,6 @@ CK_RV C_Initialize(CK_VOID_PTR a)
 
 CK_RV C_Finalize(CK_VOID_PTR a)
 {
-    WRAP_FUNCTION(C_Finalize, handle_exceptions, a);
-    
     LOG_G("%s",__FUNCTION__);
     ASSERT_NOT_PTR(a);
     
@@ -195,8 +164,6 @@ static void snprintf_fill(char *str, size_t size, char fillchar, const char *fmt
 
 CK_RV C_GetInfo(CK_INFO_PTR info)
 {
-    WRAP_FUNCTION(C_GetInfo, handle_exceptions, info);
-    
     LOG_G("%s",__FUNCTION__);
     ASSERT_PTR(info);
     
@@ -220,8 +187,6 @@ CK_RV C_GetInfo(CK_INFO_PTR info)
 
 CK_RV C_GetSlotList(CK_BBOOL tokenPresent, CK_SLOT_ID_PTR pSlotList, CK_ULONG_PTR pulCount)
 {
-    WRAP_FUNCTION(C_GetSlotList, handle_exceptions, tokenPresent, pSlotList, pulCount);
-    
     LOG_G("%s",__FUNCTION__);
     
     if (!soft_token.get()) return CKR_CRYPTOKI_NOT_INITIALIZED;
@@ -247,8 +212,6 @@ CK_RV C_GetSlotList(CK_BBOOL tokenPresent, CK_SLOT_ID_PTR pSlotList, CK_ULONG_PT
 
 CK_RV C_GetSlotInfo(CK_SLOT_ID slotID, CK_SLOT_INFO_PTR pInfo)
 {
-    WRAP_FUNCTION(C_GetSlotInfo, handle_exceptions, slotID, pInfo);
-    
     LOG_G("%s",__FUNCTION__);
     ASSERT_PTR(pInfo);
     
@@ -279,8 +242,6 @@ CK_RV C_GetSlotInfo(CK_SLOT_ID slotID, CK_SLOT_INFO_PTR pInfo)
 
 CK_RV C_GetTokenInfo(CK_SLOT_ID slotID, CK_TOKEN_INFO_PTR pInfo)
 {
-    WRAP_FUNCTION(C_GetTokenInfo, handle_exceptions, slotID, pInfo);
-    
     LOG_G("%s",__FUNCTION__);
     ASSERT_PTR(pInfo);
 
@@ -328,8 +289,6 @@ CK_RV C_GetTokenInfo(CK_SLOT_ID slotID, CK_TOKEN_INFO_PTR pInfo)
 
 CK_RV C_GetMechanismList(CK_SLOT_ID slotID, CK_MECHANISM_TYPE_PTR pMechanismList, CK_ULONG_PTR pulCount)
 {
-    WRAP_FUNCTION(C_GetMechanismList, handle_exceptions, slotID, pMechanismList, pulCount);
-    
     LOG_G("%s",__FUNCTION__);
 
     if (slotID != 1) return  CKR_SLOT_ID_INVALID;    
@@ -351,8 +310,6 @@ CK_RV C_GetMechanismList(CK_SLOT_ID slotID, CK_MECHANISM_TYPE_PTR pMechanismList
 
 CK_RV C_GetMechanismInfo(CK_SLOT_ID slotID, CK_MECHANISM_TYPE type, CK_MECHANISM_INFO_PTR pInfo)
 {
-    WRAP_FUNCTION(C_GetMechanismInfo, handle_exceptions, slotID, type, pInfo);
-    
     LOG_G("%s slot:%d type:%d", __FUNCTION__, slotID, type);
     
     return CKR_FUNCTION_NOT_SUPPORTED;
@@ -363,8 +320,6 @@ CK_RV C_InitToken(CK_SLOT_ID slotID,
         CK_ULONG ulPinLen,
         CK_UTF8CHAR_PTR pLabel)
 {
-    WRAP_FUNCTION(C_InitToken, handle_exceptions, slotID, pPin, ulPinLen, pLabel);
-    
     LOG_G("%s slot:%d", __FUNCTION__, slotID);
     return CKR_FUNCTION_NOT_SUPPORTED;
 }
@@ -375,8 +330,6 @@ CK_RV C_OpenSession(CK_SLOT_ID slotID,
           CK_NOTIFY Notify,
           CK_SESSION_HANDLE_PTR phSession)
 {
-    WRAP_FUNCTION(C_OpenSession, handle_exceptions, slotID, flags, pApplication, Notify, phSession);
-     
     LOG_G("%s slot:%d", __FUNCTION__, slotID);
     
     if (slotID != 1) return  CKR_SLOT_ID_INVALID;    
@@ -390,8 +343,6 @@ CK_RV C_OpenSession(CK_SLOT_ID slotID,
 
 CK_RV C_CloseSession(CK_SESSION_HANDLE hSession)
 {
-//     WRAP_FUNCTION(C_CloseSession, handle_exceptions, hSession);
-    
     LOG_G("%s session:%d", __FUNCTION__, hSession);
     
     LOG("s1")
@@ -405,8 +356,6 @@ CK_RV C_CloseSession(CK_SESSION_HANDLE hSession)
 
 CK_RV C_GetSessionInfo(CK_SESSION_HANDLE hSession, CK_SESSION_INFO_PTR pInfo)
 {
-    WRAP_FUNCTION(C_GetSessionInfo, handle_exceptions, hSession, pInfo);
-    
     LOG_G("%s session:%d", __FUNCTION__, hSession);
     ASSERT_PTR(pInfo);
     
@@ -439,8 +388,6 @@ const std::set<CK_ATTRIBUTE_TYPE> public_attributes = {
 
 CK_RV C_FindObjectsInit(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, CK_ULONG ulCount)
 {
-    WRAP_FUNCTION(C_FindObjectsInit, handle_exceptions, hSession, pTemplate, ulCount);
-  
     LOG_G("%s session:%d ulCount%d", __FUNCTION__, hSession, ulCount);
 
     if (!soft_token.get()) return CKR_CRYPTOKI_NOT_INITIALIZED;
@@ -480,8 +427,6 @@ CK_RV C_FindObjects(CK_SESSION_HANDLE hSession,
           CK_ULONG ulMaxObjectCount,
           CK_ULONG_PTR pulObjectCount)
 {
-    WRAP_FUNCTION(C_FindObjects, handle_exceptions, hSession, phObject, ulMaxObjectCount, pulObjectCount);
-    
     LOG_G("%s session:%d ulMaxObjectCount%d", __FUNCTION__, hSession, ulMaxObjectCount);
 
     if (!soft_token.get()) return CKR_CRYPTOKI_NOT_INITIALIZED;
@@ -516,8 +461,6 @@ CK_RV C_FindObjects(CK_SESSION_HANDLE hSession,
 CK_RV C_FindObjectsFinal(CK_SESSION_HANDLE hSession)
 {
     LOG("F1 %d", hSession);
-    WRAP_FUNCTION(C_FindObjectsFinal, handle_exceptions, hSession);
-    
     LOG("F2 %d", hSession);
 
     LOG_G("%s session:%d", __FUNCTION__, hSession);
@@ -542,8 +485,6 @@ CK_RV C_FindObjectsFinal(CK_SESSION_HANDLE hSession)
 
 CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, CK_ATTRIBUTE_PTR pTemplate, CK_ULONG ulCount)
 {
-    WRAP_FUNCTION(C_GetAttributeValue, handle_exceptions, hSession, hObject, pTemplate, ulCount);
-    
     LOG_G("%s session:%d handle:%lu %s ulCount:%d", __FUNCTION__, hSession, hObject, soft_token->attributes(hObject)[CKA_LABEL].to_string().c_str(), ulCount);
     
     if (!soft_token.get()) return CKR_CRYPTOKI_NOT_INITIALIZED;
@@ -598,8 +539,6 @@ CK_RV C_GetAttributeValue(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, 
 
 CK_RV C_Login(CK_SESSION_HANDLE hSession, CK_USER_TYPE userType, CK_UTF8CHAR_PTR pPin, CK_ULONG ulPinLen)
 {
-    WRAP_FUNCTION(C_Login, handle_exceptions, hSession, userType, pPin, ulPinLen);
-  
     LOG_G("%s session:%d", __FUNCTION__, hSession);
     
     if (!soft_token.get()) return CKR_CRYPTOKI_NOT_INITIALIZED;
@@ -628,8 +567,6 @@ CK_RV C_Login(CK_SESSION_HANDLE hSession, CK_USER_TYPE userType, CK_UTF8CHAR_PTR
 
 CK_RV C_Logout(CK_SESSION_HANDLE hSession)
 {
-    WRAP_FUNCTION(C_Logout, handle_exceptions, hSession);
-    
     LOG_G("%s session:%d", __FUNCTION__, hSession);
     
     if (!soft_token.get()) return CKR_CRYPTOKI_NOT_INITIALIZED;
@@ -644,8 +581,6 @@ CK_RV C_Logout(CK_SESSION_HANDLE hSession)
 
 CK_RV C_SignInit(CK_SESSION_HANDLE hSession, CK_MECHANISM_PTR pMechanism, CK_OBJECT_HANDLE hKey)
 {
-    WRAP_FUNCTION(C_SignInit, handle_exceptions, hSession, pMechanism, hKey);
-    
     LOG_G("%s session:%d", __FUNCTION__, hSession);
 
     if (!soft_token.get()) return CKR_CRYPTOKI_NOT_INITIALIZED;
@@ -676,8 +611,6 @@ CK_RV C_Sign(CK_SESSION_HANDLE hSession,
        CK_BYTE_PTR pSignature,
        CK_ULONG_PTR pulSignatureLen)
 {
-    WRAP_FUNCTION(C_Sign, handle_exceptions, hSession, pData, ulDataLen, pSignature, pulSignatureLen);
-    
     LOG_G("%s session:%d", __FUNCTION__, hSession);
     ASSERT_PTR(pData);
     
@@ -707,8 +640,6 @@ CK_RV C_Sign(CK_SESSION_HANDLE hSession,
 
 CK_RV C_SignUpdate(CK_SESSION_HANDLE hSession, CK_BYTE_PTR pPart, CK_ULONG ulPartLen)
 {
-    WRAP_FUNCTION(C_SignUpdate, handle_exceptions, hSession, pPart, ulPartLen);
-    
     LOG_G("%s session:%d", __FUNCTION__, hSession);
 
     if (!soft_token.get()) return CKR_CRYPTOKI_NOT_INITIALIZED;
@@ -721,8 +652,6 @@ CK_RV C_SignUpdate(CK_SESSION_HANDLE hSession, CK_BYTE_PTR pPart, CK_ULONG ulPar
 
 CK_RV C_SignFinal(CK_SESSION_HANDLE hSession, CK_BYTE_PTR pSignature, CK_ULONG_PTR pulSignatureLen)
 {
-    WRAP_FUNCTION(C_SignFinal, handle_exceptions, hSession, pSignature, pulSignatureLen);
-    
     LOG_G("%s session:%d", __FUNCTION__, hSession);
 
     if (!soft_token.get()) return CKR_CRYPTOKI_NOT_INITIALIZED;
@@ -735,8 +664,6 @@ CK_RV C_SignFinal(CK_SESSION_HANDLE hSession, CK_BYTE_PTR pSignature, CK_ULONG_P
 
 CK_RV C_CreateObject(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, CK_ULONG ulCount, CK_OBJECT_HANDLE_PTR phObject)
 {
-    WRAP_FUNCTION(C_CreateObject, handle_exceptions, hSession, pTemplate, ulCount, phObject);
-
     LOG_G("%s session:%d", __FUNCTION__, hSession);
     
     if (!soft_token.get()) return CKR_CRYPTOKI_NOT_INITIALIZED;
@@ -813,180 +740,80 @@ CK_RV C_GetFunctionList(CK_FUNCTION_LIST_PTR_PTR ppFunctionList)
 
 CK_FUNCTION_LIST funcs = {
     { 2, 11 },
-    wrap_function<CK_C_Initialize>(),
-    wrap_function<CK_C_Finalize>(),
-    wrap_function<CK_C_GetInfo>(),
-    wrap_function<CK_C_GetFunctionList>(),
-    wrap_function<CK_C_GetSlotList>(),
-    wrap_function<CK_C_GetSlotInfo>(),
-    wrap_function<CK_C_GetTokenInfo>(),
-    wrap_function<CK_C_GetMechanismList>(),
-    wrap_function<CK_C_GetMechanismInfo>(),
-    wrap_function<CK_C_InitToken>(),
-    wrap_function<CK_C_InitPIN>(),
-    reinterpret_cast<CK_C_SetPIN>(func_t<2>::not_supported), /* C_SetPIN */
-    C_OpenSession,
-    C_CloseSession,
-        reinterpret_cast<CK_C_CloseAllSessions>(func_t<4>::not_supported), //C_CloseAllSessions,
-    wrap_function<CK_C_GetSessionInfo>(),
-    reinterpret_cast<CK_C_GetOperationState>(func_t<6>::not_supported), /* C_GetOperationState */
-    reinterpret_cast<CK_C_SetOperationState>(func_t<7>::not_supported), /* C_SetOperationState */
-    wrap_function<CK_C_Login>(),
-    wrap_function<CK_C_Logout>(),
-    wrap_function<CK_C_CreateObject>(),
-    reinterpret_cast<CK_C_CopyObject>(func_t<11>::not_supported), /* C_CopyObject */
-    reinterpret_cast<CK_C_DestroyObject>(func_t<12>::not_supported), /* C_DestroyObject */
-    reinterpret_cast<CK_C_GetObjectSize>(func_t<13>::not_supported), /* C_GetObjectSize */
-    wrap_function<CK_C_GetAttributeValue>(),
-    reinterpret_cast<CK_C_SetAttributeValue>(func_t<14>::not_supported), /* C_SetAttributeValue */
-    wrap_function<CK_C_FindObjectsInit>(),
-    wrap_function<CK_C_FindObjects>(),
-    wrap_function<CK_C_FindObjectsFinal>(),
-//     C_FindObjectsFinal,
-        reinterpret_cast<CK_C_EncryptInit>(func_t<16>::not_supported), //C_EncryptInit,
-        reinterpret_cast<CK_C_Encrypt>(func_t<17>::not_supported), //C_Encrypt,
-        reinterpret_cast<CK_C_EncryptUpdate>(func_t<18>::not_supported), //C_EncryptUpdate,
-        reinterpret_cast<CK_C_EncryptFinal>(func_t<19>::not_supported), //C_EncryptFinal,
+    WRAP_FUNCTION(CK_C_Initialize, exception_handler),
+    WRAP_FUNCTION(CK_C_Finalize, exception_handler),
+    WRAP_FUNCTION(CK_C_GetInfo, exception_handler),
+    WRAP_FUNCTION(CK_C_GetFunctionList, exception_handler),
+    WRAP_FUNCTION(CK_C_GetSlotList, exception_handler),
+    WRAP_FUNCTION(CK_C_GetSlotInfo, exception_handler),
+    WRAP_FUNCTION(CK_C_GetTokenInfo, exception_handler),
+    WRAP_FUNCTION(CK_C_GetMechanismList, exception_handler),
+    WRAP_FUNCTION(CK_C_GetMechanismInfo, exception_handler),
+    WRAP_FUNCTION(CK_C_InitToken, exception_handler),
+    WRAP_FUNCTION(CK_C_InitPIN, exception_handler),
+    WRAP_NOT_IMPLEMENTED(CK_C_SetPIN),
+    WRAP_FUNCTION(CK_C_OpenSession, exception_handler),
+    WRAP_FUNCTION(CK_C_CloseSession, exception_handler),
+        WRAP_NOT_IMPLEMENTED(CK_C_CloseAllSessions), //C_CloseAllSessions,
+    WRAP_FUNCTION(CK_C_GetSessionInfo, exception_handler),
+    WRAP_NOT_IMPLEMENTED(CK_C_GetOperationState), /* C_GetOperationState */
+    WRAP_NOT_IMPLEMENTED(CK_C_SetOperationState), /* C_SetOperationState */
+    WRAP_FUNCTION(CK_C_Login, exception_handler),
+    WRAP_FUNCTION(CK_C_Logout, exception_handler),
+    WRAP_FUNCTION(CK_C_CreateObject, exception_handler),
+    WRAP_NOT_IMPLEMENTED(CK_C_CopyObject), /* C_CopyObject */
+    WRAP_NOT_IMPLEMENTED(CK_C_DestroyObject), /* C_DestroyObject */
+    WRAP_NOT_IMPLEMENTED(CK_C_GetObjectSize), /* C_GetObjectSize */
+    WRAP_FUNCTION(CK_C_GetAttributeValue, exception_handler),
+    WRAP_NOT_IMPLEMENTED(CK_C_SetAttributeValue), /* C_SetAttributeValue */
+    WRAP_FUNCTION(CK_C_FindObjectsInit, exception_handler),
+    WRAP_FUNCTION(CK_C_FindObjects, exception_handler),
+    WRAP_FUNCTION(CK_C_FindObjectsFinal, exception_handler),
+        WRAP_NOT_IMPLEMENTED(CK_C_EncryptInit), //C_EncryptInit,
+        WRAP_NOT_IMPLEMENTED(CK_C_Encrypt), //C_Encrypt,
+        WRAP_NOT_IMPLEMENTED(CK_C_EncryptUpdate), //C_EncryptUpdate,
+        WRAP_NOT_IMPLEMENTED(CK_C_EncryptFinal), //C_EncryptFinal,
         
-        reinterpret_cast<CK_C_DecryptInit>(func_t<20>::not_supported), //C_DecryptInit,
-        reinterpret_cast<CK_C_Decrypt>(func_t<21>::not_supported), //C_Decrypt,
-        reinterpret_cast<CK_C_DecryptUpdate>(func_t<22>::not_supported), //C_DecryptUpdate,
-        reinterpret_cast<CK_C_DecryptFinal>(func_t<23>::not_supported), //C_DecryptFinal,
+        WRAP_NOT_IMPLEMENTED(CK_C_DecryptInit), //C_DecryptInit,
+        WRAP_NOT_IMPLEMENTED(CK_C_Decrypt), //C_Decrypt,
+        WRAP_NOT_IMPLEMENTED(CK_C_DecryptUpdate), //C_DecryptUpdate,
+        WRAP_NOT_IMPLEMENTED(CK_C_DecryptFinal), //C_DecryptFinal,
         
-        reinterpret_cast<CK_C_DigestInit>(func_t<24>::not_supported), //C_DigestInit,
-    reinterpret_cast<CK_C_Digest>(func_t<25>::not_supported), /* C_Digest */
-    reinterpret_cast<CK_C_DigestUpdate>(func_t<26>::not_supported), /* C_DigestUpdate */
-    reinterpret_cast<CK_C_DigestKey>(func_t<27>::not_supported), /* C_DigestKey */
-    reinterpret_cast<CK_C_DigestFinal>(func_t<28>::not_supported), /* C_DigestFinal */
+        WRAP_NOT_IMPLEMENTED(CK_C_DigestInit), //C_DigestInit,
+    WRAP_NOT_IMPLEMENTED(CK_C_Digest), /* C_Digest */
+    WRAP_NOT_IMPLEMENTED(CK_C_DigestUpdate), /* C_DigestUpdate */
+    WRAP_NOT_IMPLEMENTED(CK_C_DigestKey), /* C_DigestKey */
+    WRAP_NOT_IMPLEMENTED(CK_C_DigestFinal), /* C_DigestFinal */
     C_SignInit,
     C_Sign,
     C_SignUpdate,
     C_SignFinal,
-    reinterpret_cast<CK_C_SignRecoverInit>(func_t<33>::not_supported), /* C_SignRecoverInit */
-    reinterpret_cast<CK_C_SignRecover>(func_t<34>::not_supported), /* C_SignRecover */
-        reinterpret_cast<CK_C_VerifyInit>(func_t<35>::not_supported), //C_VerifyInit,
-        reinterpret_cast<CK_C_Verify>(func_t<36>::not_supported), //C_Verify,
-        reinterpret_cast<CK_C_VerifyUpdate>(func_t<37>::not_supported), //C_VerifyUpdate,
-        reinterpret_cast<CK_C_VerifyFinal>(func_t<38>::not_supported), //C_VerifyFinal,
-    reinterpret_cast<CK_C_VerifyRecoverInit>(func_t<39>::not_supported), /* C_VerifyRecoverInit */
-    reinterpret_cast<CK_C_VerifyRecover>(func_t<40>::not_supported), /* C_VerifyRecover */
+    WRAP_NOT_IMPLEMENTED(CK_C_SignRecoverInit), /* C_SignRecoverInit */
+    WRAP_NOT_IMPLEMENTED(CK_C_SignRecover), /* C_SignRecover */
+        WRAP_NOT_IMPLEMENTED(CK_C_VerifyInit), //C_VerifyInit,
+        WRAP_NOT_IMPLEMENTED(CK_C_Verify), //C_Verify,
+        WRAP_NOT_IMPLEMENTED(CK_C_VerifyUpdate), //C_VerifyUpdate,
+        WRAP_NOT_IMPLEMENTED(CK_C_VerifyFinal), //C_VerifyFinal,
+    WRAP_NOT_IMPLEMENTED(CK_C_VerifyRecoverInit), /* C_VerifyRecoverInit */
+    WRAP_NOT_IMPLEMENTED(CK_C_VerifyRecover), /* C_VerifyRecover */
     
-    reinterpret_cast<CK_C_DigestEncryptUpdate>(func_t<41>::not_supported), /* C_DigestEncryptUpdate */
-    reinterpret_cast<CK_C_DecryptDigestUpdate>(func_t<42>::not_supported), /* C_DecryptDigestUpdate */
-    reinterpret_cast<CK_C_SignEncryptUpdate>(func_t<43>::not_supported), /* C_SignEncryptUpdate */
-    reinterpret_cast<CK_C_DecryptVerifyUpdate>(func_t<44>::not_supported), /* C_DecryptVerifyUpdate */
-    reinterpret_cast<CK_C_GenerateKey>(func_t<45>::not_supported), /* C_GenerateKey */
-    reinterpret_cast<CK_C_GenerateKeyPair>(func_t<46>::not_supported), /* C_GenerateKeyPair */
-    reinterpret_cast<CK_C_WrapKey>(func_t<47>::not_supported), /* C_WrapKey */
-    reinterpret_cast<CK_C_UnwrapKey>(func_t<48>::not_supported), /* C_UnwrapKey */
-    reinterpret_cast<CK_C_DeriveKey>(func_t<49>::not_supported), /* C_DeriveKey */
-    reinterpret_cast<CK_C_SeedRandom>(func_t<50>::not_supported), /* C_SeedRandom */
-        reinterpret_cast<CK_C_GenerateRandom>(func_t<51>::not_supported), //C_GenerateRandom,
-    reinterpret_cast<CK_C_GetFunctionStatus>(func_t<52>::not_supported), /* C_GetFunctionStatus */
-    reinterpret_cast<CK_C_CancelFunction>(func_t<53>::not_supported), /* C_CancelFunction */
-    reinterpret_cast<CK_C_WaitForSlotEvent>(func_t<54>::not_supported)  /* C_WaitForSlotEvent */
+    WRAP_NOT_IMPLEMENTED(CK_C_DigestEncryptUpdate), /* C_DigestEncryptUpdate */
+    WRAP_NOT_IMPLEMENTED(CK_C_DecryptDigestUpdate), /* C_DecryptDigestUpdate */
+    WRAP_NOT_IMPLEMENTED(CK_C_SignEncryptUpdate), /* C_SignEncryptUpdate */
+    WRAP_NOT_IMPLEMENTED(CK_C_DecryptVerifyUpdate), /* C_DecryptVerifyUpdate */
+    WRAP_NOT_IMPLEMENTED(CK_C_GenerateKey), /* C_GenerateKey */
+    WRAP_NOT_IMPLEMENTED(CK_C_GenerateKeyPair), /* C_GenerateKeyPair */
+    WRAP_NOT_IMPLEMENTED(CK_C_WrapKey), /* C_WrapKey */
+    WRAP_NOT_IMPLEMENTED(CK_C_UnwrapKey), /* C_UnwrapKey */
+    WRAP_NOT_IMPLEMENTED(CK_C_DeriveKey), /* C_DeriveKey */
+    WRAP_NOT_IMPLEMENTED(CK_C_SeedRandom), /* C_SeedRandom */
+        WRAP_NOT_IMPLEMENTED(CK_C_GenerateRandom), //C_GenerateRandom,
+    WRAP_NOT_IMPLEMENTED(CK_C_GetFunctionStatus), /* C_GetFunctionStatus */
+    WRAP_NOT_IMPLEMENTED(CK_C_CancelFunction), /* C_CancelFunction */
+    WRAP_NOT_IMPLEMENTED(CK_C_WaitForSlotEvent)  /* C_WaitForSlotEvent */
 };
 
 
-}
-
-#define FUSION_MAX_MAP_SIZE 30
-#define FUSION_MAX_VECTOR_SIZE 30
-
-#include <boost/fusion/include/make_map.hpp>
-#include <boost/preprocessor.hpp>
-
-template <typename Function>
-Function rvcast(Function f) {return f;}
-
-
-#define __ADD_TAG(r, data, elem) (BOOST_PP_CAT(CK_, elem))
-//#define __ADD_TAG(r, data, elem) (tag_s<const_hash(BOOST_STRINGIZE(BOOST_PP_CAT(CK_, elem)))>)
-
-#define __ADD_RVCAST(r, data, elem) (rvcast(elem))
-
-#define __ADD_PRINT(r, data, elem) (rvcast(elem))
-
-#define TUPLE (\
-    C_Initialize, C_Finalize,\
-    C_GetInfo, C_GetFunctionList, C_GetSlotList, C_GetSlotInfo, C_GetTokenInfo,\
-    C_GetMechanismList, C_GetMechanismInfo,\
-    C_InitToken, C_InitPIN,\
-    C_OpenSession, C_CloseSession,\
-    C_GetSessionInfo,\
-    C_Login, C_Logout,\
-    C_CreateObject,\
-    C_GetAttributeValue,\
-    C_FindObjectsInit, C_FindObjects, C_FindObjectsFinal,\
-    C_SignInit, C_Sign, C_SignUpdate, C_SignFinal\
-)
-
-#define __TUPLE_SEQ BOOST_PP_TUPLE_TO_SEQ(TUPLE)
-
-#define __SEQ_WITH_CK BOOST_PP_SEQ_FOR_EACH(__ADD_TAG, 0, __TUPLE_SEQ)
-#define __SEQ_WITH_RVCAST BOOST_PP_SEQ_FOR_EACH(__ADD_RVCAST, 0, __TUPLE_SEQ)
-
-#define __TUPLE_WITH_CK BOOST_PP_SEQ_TO_TUPLE(__SEQ_WITH_CK)
-#define __TUPLE_WITH_RVCAST BOOST_PP_SEQ_TO_TUPLE(__SEQ_WITH_RVCAST)
-
-
-#define FUNCTION_TYPES BOOST_PP_TUPLE_REM_CTOR(BOOST_PP_TUPLE_SIZE(__TUPLE_WITH_CK), __TUPLE_WITH_CK)
-#define FUNCTION_CASTS BOOST_PP_TUPLE_REM_CTOR(BOOST_PP_TUPLE_SIZE(__TUPLE_WITH_RVCAST), __TUPLE_WITH_RVCAST)
-
-#include <boost/fusion/algorithm/iteration/for_each.hpp>
-#include <boost/fusion/include/for_each.hpp>
-
-
-const auto functions_c = boost::fusion::make_map<FUNCTION_TYPES>(FUNCTION_CASTS);
-
-#define TTT(elem) BOOST_STRINGIZE(tag_s<const_hash(#elem)>)
-
-struct increment {
-  
-    template <typename T>
-    void operator()(T& t) const {
-      LOG("[%lu]", t.second);  
-    }
-  
-};
-
-template <typename Function>
-Function wrap_function_test() {
-  std::cerr << "123" << std::endl;
-}
-
-static const bool b = [](){
-
-    
-    std::cerr << "test: " << BOOST_PP_TUPLE_SIZE(__TUPLE_WITH_CK) << " - " << boost::fusion::size(functions_c) << std::endl;;
-  
-    std::cerr << "h1:" << const_hash("h1") << std::endl;
-    std::cerr << "h2:" << const_hash("h2") << std::endl;
-    std::cerr << "h1:" << const_hash("h1") << std::endl;
-  
-    wrap_function_test<CK_C_Login, 123>();
-    
-//   LOG("FindOF: [%lu]", C_FindObjectsFinal);  
-//   LOG("FindOFW: [%lu]", boost::fusion::at_key<CK_C_FindObjectsFinal>(functions_c));  
-//   
-//     boost::fusion::for_each(functions_c, increment());
-//   
-//   LOG("FindOFW: [%lu]", boost::fusion::at_key<CK_C_FindObjectsFinal>(functions_c));  
-  
-  return true;
-}();
-
-
-
-template <typename Function, typename ...Args>
-CK_RV wrap_function_impl(Args... args) {
-//     return boost::fusion::at_key<Function>(functions_c)(args...);
-  return 0;
-}
-
-template <typename Function>
-Function wrap_function() {
-  return static_cast<Function>(wrap_function_impl<Function>);
 }
 
 
