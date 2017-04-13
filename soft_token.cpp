@@ -656,7 +656,7 @@ void soft_token_t::reset()
         auto public_range = p_->objects
             | filtered(by_attrs({create_object(CKA_CLASS, public_key_c)}))
 //                 | filtered(by_attrs({create_object(AttrSshPublic, bool_true)}))
-            | filtered([&private_key] (const Objects::value_type& pub_key) mutable {
+            | filtered([&private_key] (const Objects::value_type& pub_key) {
                 return is_equal(CKA_MODULUS, pub_key, private_key)
                     || pub_key.second.at(CKA_LABEL).to_string() == (private_key.second.at(CKA_LABEL).to_string() + ".pub");
             });
